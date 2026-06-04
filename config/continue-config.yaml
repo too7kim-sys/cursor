@@ -1,0 +1,37 @@
+# Continue 설정 예시 — 폐쇄망 Ollama 서버 연결
+#
+# 위치: 이 파일을 로컬 PC의 ~/.continue/config.yaml 로 복사하세요.
+#   - Linux/Mac: ~/.continue/config.yaml
+#   - Windows:   %USERPROFILE%\.continue\config.yaml
+#
+# 사용 전 반드시 apiBase 의 IP(192.168.0.10)를 실제 Ollama 서버 IP로 바꾸세요.
+name: 폐쇄망 Ollama
+version: 0.0.1
+schema: v1
+
+models:
+  # 채팅 / 편집 / 적용 — 품질 우선 (코딩 특화 모델)
+  - name: Qwen2.5 Coder (chat)
+    provider: ollama
+    model: qwen2.5-coder:7b
+    apiBase: http://192.168.0.10:11434   # ← 서버 IP로 변경
+    roles:
+      - chat
+      - edit
+      - apply
+
+  # 자동완성 — 응답 속도 우선 (작은 모델)
+  - name: Qwen2.5 Coder (autocomplete)
+    provider: ollama
+    model: qwen2.5-coder:1.5b
+    apiBase: http://192.168.0.10:11434   # ← 서버 IP로 변경
+    roles:
+      - autocomplete
+
+  # 임베딩 — @codebase 코드베이스 질의에 필요
+  - name: Nomic Embed
+    provider: ollama
+    model: nomic-embed-text
+    apiBase: http://192.168.0.10:11434   # ← 서버 IP로 변경
+    roles:
+      - embed
