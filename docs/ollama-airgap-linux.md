@@ -1,6 +1,9 @@
-# 폐쇄망(에어갭) Ollama 서버 구축 + 로컬 VS Code 코딩 환경 가이드
+# 폐쇄망(에어갭) Ollama 서버 구축 (Linux 서버) + 로컬 VS Code 코딩 환경
 
-인터넷이 차단된 폐쇄망에서 **Linux 서버에 Ollama를 설치**하고, 내부망의 **로컬 PC에서 VS Code + Continue 확장**으로 연결해 AI 코딩(채팅·편집·자동완성·코드베이스 질의)을 하는 방법을 단계별로 정리한 가이드입니다.
+인터넷이 차단된 폐쇄망에서 **Linux 서버에 Ollama를 설치**하고, 내부망의 **로컬 PC에서 VS Code + Continue 확장**으로 연결해 AI 코딩(채팅·편집·자동완성·자동수정·코드베이스 질의)을 하는 방법을 단계별로 정리한 가이드입니다.
+
+> 서버가 **Windows**라면 → [ollama-airgap-windows.md](ollama-airgap-windows.md)
+> 로컬 PC(Windows) 개발환경 설정은 공통입니다 → [local-dev-setup-windows.md](local-dev-setup-windows.md)
 
 > **요약**: "VS Code + Ollama 연결"만으로 폐쇄망에서도 GitHub Copilot과 유사한 코딩 보조가 가능합니다. 체감 품질은 **올리는 모델**과 **서버 하드웨어(특히 GPU)** 에 좌우됩니다.
 
@@ -61,11 +64,13 @@
 
 | 용도 | 권장 모델 | 비고 |
 |------|-----------|------|
-| 채팅 / 편집 | `qwen2.5-coder:7b` (여유 시 `:14b`, `deepseek-coder-v2:16b`) | 코딩 특화, 품질 우선 |
-| 자동완성(Autocomplete) | `qwen2.5-coder:1.5b` (또는 `:3b`) | 빠른 응답 우선, 작은 모델 |
-| 임베딩(@codebase 검색) | `nomic-embed-text` | 코드베이스 질의 시 필수, 함께 반입 |
+| 채팅 / 편집 / **자동수정(Agent)** | `qwen3-coder:30b` (가벼우면 `qwen2.5-coder:7b`/`14b`) | 코딩 특화 + **도구 호출(tool_use) 지원** |
+| 자동완성(Autocomplete) | `qwen2.5-coder:1.5b-base` (또는 `:3b-base`) | 빠른 응답 우선, FIM 지원 작은 모델 |
+| 임베딩(@codebase 검색) | `nomic-embed-text` 또는 `bge-m3` | 코드베이스 질의 시 필수, 함께 반입 |
 
-> 일반 채팅 모델보다 **코딩 특화 모델**(qwen2.5-coder, deepseek-coder-v2 등)을 쓰는 것이 코드 품질에 유리합니다.
+> 일반 채팅 모델보다 **코딩 특화 모델**(qwen3-coder, qwen2.5-coder 등)을 쓰는 것이 코드 품질에 유리합니다.
+>
+> **Agent(자동 수정)** — AI가 파일을 탐색하며 여러 파일을 자동 수정하려면 chat 모델이 **도구 호출(tool_use)** 을 지원해야 합니다. `qwen3-coder` 가 이에 해당합니다. 자동완성 전용 작은 모델은 도구 호출이 불필요합니다.
 
 ---
 
@@ -92,9 +97,9 @@ sha256sum ollama-linux-amd64.tgz > ollama-linux-amd64.tgz.sha256
 curl -fsSL https://ollama.com/install.sh | sh
 
 # 용도별 모델 받기
-ollama pull qwen2.5-coder:7b      # 채팅/편집
-ollama pull qwen2.5-coder:1.5b    # 자동완성
-ollama pull nomic-embed-text      # 임베딩(@codebase)
+ollama pull qwen3-coder:30b          # 채팅/편집/자동수정(Agent)
+ollama pull qwen2.5-coder:1.5b-base  # 자동완성
+ollama pull nomic-embed-text         # 임베딩(@codebase)
 
 # 모델 저장 위치(manifests + blobs)를 통째로 패키징
 #  - 표준 설치 시: /usr/share/ollama/.ollama/models
@@ -209,7 +214,7 @@ sudo systemctl restart ollama
 
 # 확인
 ollama list
-ollama run qwen2.5-coder:7b "Write a hello world in Python"
+ollama run qwen3-coder:30b "Write a hello world in Python"
 ```
 
 `ollama list`에 반입한 모델 3종이 보이면 성공입니다.
@@ -224,47 +229,14 @@ ollama run qwen2.5-coder:7b "Write a hello world in Python"
 
 ## 8. 로컬 PC: VS Code + Continue 연결
 
-### 8.1 Continue 확장 설치
+로컬 PC(Windows)에서의 VS Code + Continue 설치/설정, Continue 모드(Chat/Edit/Agent),
+자동수정(Agent) 동작 조건, JDK·Tomcat 설정, 터미널 한글 깨짐 해결까지는 공통 문서를 따르세요.
 
-- 인터넷이 되면: VS Code 확장 마켓에서 **Continue** 검색 후 설치.
-- 폐쇄망이면: 인터넷 PC에서 Continue `.vsix`를 받아 반입 후
-  - VS Code → 확장 → `...` 메뉴 → **Install from VSIX...**, 또는
-  - `code --install-extension continue.continue-<버전>.vsix`
+➡️ **[local-dev-setup-windows.md](local-dev-setup-windows.md)**
 
-### 8.2 Continue 설정
-
-`~/.continue/config.yaml`(Windows: `%USERPROFILE%\.continue\config.yaml`)을 작성합니다. 이 저장소의 [`config/continue-config.yaml`](../config/continue-config.yaml) 예시를 복사하고 **서버 IP만 수정**하세요.
-
-```yaml
-name: 폐쇄망 Ollama
-version: 0.0.1
-schema: v1
-models:
-  - name: Qwen2.5 Coder (chat)
-    provider: ollama
-    model: qwen2.5-coder:7b
-    apiBase: http://192.168.0.10:11434   # ← 서버 IP로 변경
-    roles: [chat, edit, apply]
-
-  - name: Qwen2.5 Coder (autocomplete)
-    provider: ollama
-    model: qwen2.5-coder:1.5b
-    apiBase: http://192.168.0.10:11434   # ← 서버 IP로 변경
-    roles: [autocomplete]
-
-  - name: Nomic Embed
-    provider: ollama
-    model: nomic-embed-text
-    apiBase: http://192.168.0.10:11434   # ← 서버 IP로 변경
-    roles: [embed]
-```
-
-### 8.3 사용법
-
-- **채팅**: `Ctrl+L` (Mac `Cmd+L`)
-- **인라인 편집**: 코드 선택 후 `Ctrl+I`
-- **자동완성**: 코딩 중 자동 제안 → `Tab`으로 수락
-- **코드베이스 질의**: 채팅에 `@codebase 로그인 처리 어디서 해?` 처럼 입력 (임베딩 모델 필요)
+Continue 설정 파일은 이 저장소의 [`config/continue-config.yaml`](../config/continue-config.yaml) 을
+`%USERPROFILE%\.continue\config.yaml`(Linux/Mac: `~/.continue/config.yaml`)로 복사하고 **서버 IP만 수정**하면 됩니다.
+(chat 모델 `tool_use` 와 한국어 `rules` 가 포함되어 있습니다.)
 
 ---
 
@@ -274,12 +246,15 @@ models:
 
 ```bash
 curl http://localhost:11434/api/tags          # 설치된 모델 목록(JSON)
+
+# 도구 호출(Agent용) 확인 — tool_calls 가 구조화되어 나오면 자동수정 가능
+curl http://localhost:11434/api/chat -d '{"model":"qwen3-coder:30b","messages":[{"role":"user","content":"list files"}],"tools":[{"type":"function","function":{"name":"ls","description":"list dir","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}}],"stream":false}'
 ```
 
 **로컬 PC에서 (서버 연결 확인):**
 
 ```bash
-curl http://192.168.0.10:11434/api/tags        # 서버 IP로
+curl http://192.168.45.214:11434/api/tags      # 서버 IP로
 ```
 
 모델 목록 JSON이 돌아오면 네트워크 연결 정상입니다. 이후 VS Code에서 Continue 채팅에 질문해 응답이 오면 끝입니다.
@@ -305,6 +280,12 @@ A. 더 작은 모델을 쓰거나, 동시에 로드되는 모델 수를 줄이�
 
 **Q. 아키텍처가 arm64입니다.**
 A. 4.1의 tgz 파일명을 `ollama-linux-arm64.tgz`로 바꾸고, 모델 패키징은 동일하게 진행하면 됩니다(모델은 아키텍처 무관).
+
+**Q. Agent(자동 수정)에서 `<function=ls>...` 텍스트만 나오고 멈춰요.**
+A. 위 9번 curl로 서버의 `tool_calls` 출력을 먼저 확인하세요. 서버가 정상(tool_calls 구조화)이면 원인은 로컬 **Continue 구버전**입니다 → 최신 `.vsix`로 업데이트. 자세한 내용은 [local-dev-setup-windows.md 4번](local-dev-setup-windows.md#4-자동-수정agent-동작-조건).
+
+**Q. 답변이 중국어로 나와요.**
+A. Continue `config.yaml` 에 한국어 `rules` 를 추가하고 Reload 하세요([config 예시](../config/continue-config.yaml)). 터미널 글자가 깨지는 거라면 인코딩 문제입니다([local-dev-setup-windows.md 7번](local-dev-setup-windows.md#7-터미널-한글-깨짐-해결)).
 
 ---
 

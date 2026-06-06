@@ -1,0 +1,21 @@
+{
+    // 프로젝트 루트의 .vscode/tasks.json 으로 저장하세요.
+    // Ctrl+Shift+B 로 "빌드+배포+기동"이 실행됩니다.
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Tomcat: 빌드+배포+기동",
+            "type": "shell",
+            "command": "${workspaceFolder}\\deploy.bat",
+            "group": { "kind": "build", "isDefault": true },
+            "presentation": { "reveal": "always", "panel": "shared", "clear": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "Tomcat: 정지",
+            "type": "shell",
+            "command": "C:\\eGovFrameDev-5.0.0\\bin\\apache-tomcat-9.0.117\\bin\\shutdown.bat",
+            "problemMatcher": []
+        }
+    ]
+}

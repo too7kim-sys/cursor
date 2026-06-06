@@ -39,4 +39,4 @@ echo "==> [3/3] 모델 목록 확인"
 OLLAMA_HOST=127.0.0.1:11434 ollama list
 
 echo "==> 완료. 테스트:"
-echo "    OLLAMA_HOST=127.0.0.1:11434 ollama run qwen2.5-coder:7b \"hello\""
+echo "    OLLAMA_HOST=127.0.0.1:11434 ollama run qwen3-coder:30b \"hello\""

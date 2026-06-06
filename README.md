@@ -2,7 +2,12 @@
 
 Windows에서 AI 코딩 도구(Claude Code, Cursor 등)를 설치하고 설정하는 방법을 단계별로 정리한 가이드입니다. 초보자도 따라 할 수 있도록 사전 준비부터 도구별 설정, 자주 묻는 문제 해결까지 다룹니다.
 
-> **폐쇄망(에어갭) 환경**에서 Linux 서버에 Ollama를 설치하고 로컬 PC의 VS Code + Continue로 코딩하려면 → [폐쇄망 Ollama 서버 구축 + 로컬 VS Code 코딩 가이드](docs/ollama-airgap-linux.md)
+> **폐쇄망(에어갭) 환경**에서 Ollama 서버를 구축하고 로컬 PC의 VS Code + Continue로 코딩하려면:
+> - 🐧 [폐쇄망 Ollama 서버 구축 — **Linux 서버**](docs/ollama-airgap-linux.md)
+> - 🪟 [폐쇄망 Ollama 서버 구축 — **Windows 서버**](docs/ollama-airgap-windows.md)
+> - 💻 [로컬 PC(Windows) 개발환경 — VS Code + Continue + eGov/Tomcat](docs/local-dev-setup-windows.md) (공통)
+>
+> 관련 설정/스크립트: [`config/continue-config.yaml`](config/continue-config.yaml), [`templates/deploy.bat`](templates/deploy.bat), [`templates/tasks.json`](templates/tasks.json), [`scripts/`](scripts/)
 
 ## 목차
 

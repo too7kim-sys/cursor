@@ -1,37 +1,50 @@
 # Continue 설정 예시 — 폐쇄망 Ollama 서버 연결
 #
 # 위치: 이 파일을 로컬 PC의 ~/.continue/config.yaml 로 복사하세요.
+#   - Windows:   %USERPROFILE%\.continue\config.yaml  (예: C:\Users\<계정>\.continue\config.yaml)
 #   - Linux/Mac: ~/.continue/config.yaml
-#   - Windows:   %USERPROFILE%\.continue\config.yaml
 #
-# 사용 전 반드시 apiBase 의 IP(192.168.0.10)를 실제 Ollama 서버 IP로 바꾸세요.
+# 사용 전 반드시 apiBase 의 IP(192.168.45.214)를 실제 Ollama 서버 IP로 바꾸세요.
+# 모델명은 서버의 `ollama list` 에 뜨는 태그와 글자 하나까지 정확히 일치해야 합니다.
+
 name: 폐쇄망 Ollama
 version: 0.0.1
 schema: v1
 
+# 모든 답변을 한국어로 강제 (qwen 계열은 기본적으로 중국어가 섞일 수 있음)
+rules:
+  - 모든 답변과 설명은 반드시 한국어로 작성하세요.
+  - 코드 주석도 한국어로 작성하세요.
+  - 절대 중국어로 답변하지 마세요.
+
 models:
-  # 채팅 / 편집 / 적용 — 품질 우선 (코딩 특화 모델)
-  - name: Qwen2.5 Coder (chat)
+  # 채팅 / 편집 / 자동수정(Agent) — 코딩 특화 + 도구 호출 지원 모델
+  #   - Agent 모드(자동 수정, 파일 탐색)를 쓰려면 tool_use 지원 모델이어야 합니다.
+  #   - qwen3-coder 는 도구 호출을 지원합니다. 하드웨어가 부족하면 qwen2.5-coder:7b 등으로 낮추세요.
+  - name: Qwen3 Coder 30B (chat)
     provider: ollama
-    model: qwen2.5-coder:7b
-    apiBase: http://192.168.0.10:11434   # ← 서버 IP로 변경
+    model: qwen3-coder:30b
+    apiBase: http://192.168.45.214:11434   # ← 서버 IP로 변경
     roles:
       - chat
       - edit
       - apply
+    capabilities:
+      - tool_use                            # Agent 모드 툴 호출 안정화
 
-  # 자동완성 — 응답 속도 우선 (작은 모델)
-  - name: Qwen2.5 Coder (autocomplete)
+  # 자동완성 — 응답 속도 우선 (작은 base 모델, FIM 지원)
+  - name: Qwen2.5 Coder 1.5B (autocomplete)
     provider: ollama
-    model: qwen2.5-coder:1.5b
-    apiBase: http://192.168.0.10:11434   # ← 서버 IP로 변경
+    model: qwen2.5-coder:1.5b-base
+    apiBase: http://192.168.45.214:11434   # ← 서버 IP로 변경
     roles:
       - autocomplete
 
   # 임베딩 — @codebase 코드베이스 질의에 필요
-  - name: Nomic Embed
+  #   - nomic-embed-text 또는 다국어/코드에 강한 bge-m3 중 택1
+  - name: Embed
     provider: ollama
     model: nomic-embed-text
-    apiBase: http://192.168.0.10:11434   # ← 서버 IP로 변경
+    apiBase: http://192.168.45.214:11434   # ← 서버 IP로 변경
     roles:
       - embed

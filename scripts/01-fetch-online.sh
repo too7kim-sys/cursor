@@ -22,9 +22,9 @@ MODELS_TAR="ollama-models.tar.gz"
 
 # 반입할 모델 목록 (용도별). 필요에 따라 수정하세요.
 MODELS=(
-  "qwen2.5-coder:7b"       # 채팅/편집
-  "qwen2.5-coder:1.5b"     # 자동완성
-  "nomic-embed-text"       # 임베딩(@codebase)
+  "qwen3-coder:30b"          # 채팅/편집/자동수정(Agent) — 도구 호출 지원
+  "qwen2.5-coder:1.5b-base"  # 자동완성
+  "nomic-embed-text"         # 임베딩(@codebase)
 )
 
 mkdir -p "$OUT_DIR"
