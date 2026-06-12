@@ -7,6 +7,7 @@ Windows에서 AI 코딩 도구(Claude Code, Cursor 등)를 설치하고 설정�
 > - 🪟 [폐쇄망 Ollama 서버 구축 — **Windows 서버**](docs/ollama-airgap-windows.md)
 > - 💻 [로컬 PC(Windows) 개발환경 — VS Code + Continue + eGov/Tomcat](docs/local-dev-setup-windows.md) (공통)
 > - ☕ [Eclipse(EclipseLlama)에서 Ollama 연결](docs/eclipse-llama-ollama.md)
+> - 🧩 [**Eclipse 플러그인 직접 빌드** — eGov Ollama Assist (Continue 유사 채팅/코드설명/리팩터링)](eclipse-plugin/README.md)
 >
 > 관련 설정/스크립트: [`config/continue-config.yaml`](config/continue-config.yaml), [`templates/deploy.bat`](templates/deploy.bat), [`templates/tasks.json`](templates/tasks.json), [`scripts/`](scripts/)
 
