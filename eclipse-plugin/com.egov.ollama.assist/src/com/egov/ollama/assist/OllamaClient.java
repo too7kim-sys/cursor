@@ -1,6 +1,7 @@
 package com.egov.ollama.assist;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -22,6 +23,49 @@ public class OllamaClient {
 	}
 
 	private OllamaClient() {
+	}
+
+	private static String normalize(String u) {
+		String s = u == null ? "" : u.trim();
+		if (s.endsWith("/")) {
+			s = s.substring(0, s.length() - 1);
+		}
+		return s;
+	}
+
+	/**
+	 * 일반 POST(비스트리밍) 호출. 응답 본문 전체를 문자열로 반환한다.
+	 * Agent 의 도구 호출(/api/chat, stream=false) 등에 사용.
+	 */
+	public static String post(String baseUrl, String path, String body) throws IOException {
+		URL url = new URL(normalize(baseUrl) + path);
+		HttpURLConnection con = (HttpURLConnection) url.openConnection();
+		con.setRequestMethod("POST");
+		con.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+		con.setDoOutput(true);
+		con.setConnectTimeout(10000);
+		con.setReadTimeout(600000);
+		try (OutputStream os = con.getOutputStream()) {
+			os.write(body.getBytes(StandardCharsets.UTF_8));
+		}
+		int code = con.getResponseCode();
+		InputStream in = (code >= 200 && code < 300) ? con.getInputStream() : con.getErrorStream();
+		if (in == null) {
+			throw new IOException("HTTP " + code + " (응답 본문 없음)");
+		}
+		ByteArrayOutputStream bout = new ByteArrayOutputStream();
+		byte[] buf = new byte[8192];
+		int n;
+		try (InputStream i2 = in) {
+			while ((n = i2.read(buf)) >= 0) {
+				bout.write(buf, 0, n);
+			}
+		}
+		String resp = new String(bout.toByteArray(), StandardCharsets.UTF_8);
+		if (code >= 400) {
+			throw new IOException("HTTP " + code + ": " + resp);
+		}
+		return resp;
 	}
 
 	/**
