@@ -38,7 +38,7 @@ public class OllamaClient {
 	 * Agent 의 도구 호출(/api/chat, stream=false) 등에 사용.
 	 */
 	public static String post(String baseUrl, String path, String body) throws IOException {
-		URL url = new URL(normalize(baseUrl) + path);
+		URL url = java.net.URI.create(normalize(baseUrl) + path).toURL();
 		HttpURLConnection con = (HttpURLConnection) url.openConnection();
 		con.setRequestMethod("POST");
 		con.setRequestProperty("Content-Type", "application/json; charset=utf-8");
@@ -81,7 +81,7 @@ public class OllamaClient {
 		if (base.endsWith("/")) {
 			base = base.substring(0, base.length() - 1);
 		}
-		URL url = new URL(base + "/api/chat");
+		URL url = java.net.URI.create(base + "/api/chat").toURL();
 
 		StringBuilder body = new StringBuilder();
 		body.append("{\"model\":").append(JsonUtil.quote(model)).append(",\"messages\":[");
