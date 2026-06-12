@@ -115,10 +115,12 @@ public class OllamaClient {
 				if (line.trim().isEmpty()) {
 					continue;
 				}
-				// 에러 응답: {"error":"..."}
-				String err = JsonUtil.extractString(line, "error");
-				if (err != null) {
-					throw new IOException("Ollama 오류: " + err);
+				// 에러 응답: {"error":"..."} — message 가 없는 줄에서만 에러로 판단(오탐 방지)
+				if (line.indexOf("\"message\"") < 0) {
+					String err = JsonUtil.extractString(line, "error");
+					if (err != null) {
+						throw new IOException("Ollama 오류: " + err);
+					}
 				}
 				String content = JsonUtil.extractString(line, "content");
 				if (content != null && !content.isEmpty()) {

@@ -19,7 +19,6 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Text;
-import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.ViewPart;
 
 import com.egov.ollama.assist.Activator;
@@ -172,7 +171,8 @@ public class ChatView extends ViewPart {
 				return Status.OK_STATUS;
 			}
 		};
-		job.setUser(true);
+		// 확인 다이얼로그와 겹치지 않도록 모달 진행 대화상자 대신 백그라운드로 실행
+		job.setUser(false);
 		job.schedule();
 	}
 
@@ -184,17 +184,23 @@ public class ChatView extends ViewPart {
 			return false;
 		}
 		display.syncExec(() -> {
-			Shell shell = null;
-			try {
-				shell = PlatformUI.getWorkbench().getActiveWorkbenchWindow().getShell();
-			} catch (Exception ignore) {
-				// null shell 허용
+			Shell shell = display.getActiveShell();
+			boolean tempShell = false;
+			if (shell == null) {
+				shell = new Shell(display);
+				tempShell = true;
 			}
-			String preview = newContent.length() > 1500 ? newContent.substring(0, 1500) + "\n...(미리보기 생략)"
-					: newContent;
-			String head = oldContent.isEmpty() ? "[새 파일 생성]\n" : "[기존 파일 덮어쓰기]\n";
-			result[0] = MessageDialog.openConfirm(shell, "Ollama Agent — 파일 수정 확인",
-					head + relPath + "\n\n[새 내용 미리보기]\n" + preview);
+			try {
+				String preview = newContent.length() > 1500 ? newContent.substring(0, 1500) + "\n...(미리보기 생략)"
+						: newContent;
+				String head = oldContent.isEmpty() ? "[새 파일 생성]\n" : "[기존 파일 덮어쓰기]\n";
+				result[0] = MessageDialog.openConfirm(shell, "Ollama Agent — 파일 수정 확인",
+						head + relPath + "\n\n[새 내용 미리보기]\n" + preview);
+			} finally {
+				if (tempShell) {
+					shell.dispose();
+				}
+			}
 		});
 		return result[0];
 	}

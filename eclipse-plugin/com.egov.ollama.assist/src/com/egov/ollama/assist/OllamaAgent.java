@@ -74,6 +74,7 @@ public class OllamaAgent {
 					+ ",\"tools\":" + TOOLS
 					+ ",\"stream\":false}";
 
+			log.log("\n(모델 응답 생성 중… #" + (iter + 1) + ")\n");
 			String resp = OllamaClient.post(base, "/api/chat", body);
 			Object parsed = Json.parse(resp);
 			if (!(parsed instanceof Map)) {
