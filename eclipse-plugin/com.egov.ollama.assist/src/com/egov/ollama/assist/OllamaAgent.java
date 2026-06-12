@@ -34,6 +34,24 @@ public class OllamaAgent {
 		boolean ask(String title, String message);
 	}
 
+	/**
+	 * Eclipse 환경 연동(진단/서버). UI 계층에서 구현해 주입한다.
+	 * 순수 JDK 로직과 분리하기 위해 인터페이스로 둔다.
+	 */
+	public interface Environment {
+		String getProblems();
+
+		String getConsole();
+
+		String listServers();
+
+		String startServer(String name);
+
+		String stopServer(String name);
+	}
+
+	private static final String ENV_NA = "이 기능은 현재 사용할 수 없습니다(Eclipse 환경 미연결).";
+
 	private static final int MAX_ITER = 25;
 	private static final int MAX_LIST = 400;
 	private static final int MAX_READ = 60000;
@@ -48,9 +66,10 @@ public class OllamaAgent {
 	private final Confirm confirm;
 	private final boolean enableRun;
 	private final BooleanSupplier cancelled;
+	private final Environment env;
 
 	public OllamaAgent(String base, String model, String system, File root, boolean enableRun,
-			Logger log, Confirm confirm, BooleanSupplier cancelled) {
+			Logger log, Confirm confirm, BooleanSupplier cancelled, Environment env) {
 		this.base = base;
 		this.model = model;
 		this.system = system;
@@ -59,6 +78,7 @@ public class OllamaAgent {
 		this.log = log;
 		this.confirm = confirm;
 		this.cancelled = cancelled;
+		this.env = env;
 	}
 
 	public void run(String userPrompt) throws IOException {
@@ -157,6 +177,10 @@ public class OllamaAgent {
 		if (enableRun) {
 			sb.append("4) 필요 시 run_command 로 빌드/테스트를 실행해 결과를 확인한다.\n");
 		}
+		if (env != null) {
+			sb.append("5) 컴파일 오류 수정 요청 시 get_problems 로 실제 오류 목록을 먼저 확인하고, ")
+					.append("실행/빌드 로그는 get_console 로 확인한다. 서버는 list_servers/start_server/stop_server 로 다룬다.\n");
+		}
 		sb.append("작업이 끝나면 변경한 파일과 이유를 한국어로 요약한다.");
 		return sb.toString();
 	}
@@ -201,6 +225,21 @@ public class OllamaAgent {
 			p.put("command", prop("string", "프로젝트 루트에서 실행할 쉘 명령(예: mvn -q compile)"));
 			tools.add(func("run_command", "프로젝트 루트에서 명령을 실행하고 출력을 반환. 사용자 확인 후 실행",
 					p, Arrays.asList("command")));
+		}
+
+		if (env != null) {
+			tools.add(func("get_problems", "Eclipse Problems 뷰의 컴파일 오류/경고 목록(파일:줄: 메시지)을 반환",
+					new LinkedHashMap<>(), null));
+			tools.add(func("get_console", "Eclipse Console 의 최근 출력(빌드/실행 로그)을 반환",
+					new LinkedHashMap<>(), null));
+			tools.add(func("list_servers", "등록된 서버(Tomcat 등)와 상태 목록을 반환",
+					new LinkedHashMap<>(), null));
+			p = new LinkedHashMap<>();
+			p.put("name", prop("string", "서버 이름(list_servers 로 확인)"));
+			tools.add(func("start_server", "지정한 서버를 기동(사용자 확인 후)", p, Arrays.asList("name")));
+			p = new LinkedHashMap<>();
+			p.put("name", prop("string", "서버 이름"));
+			tools.add(func("stop_server", "지정한 서버를 중지(사용자 확인 후)", p, Arrays.asList("name")));
 		}
 
 		return Json.write(tools);
@@ -253,6 +292,16 @@ public class OllamaAgent {
 				return writeFile(asString(args.get("path")), asString(args.get("content")));
 			case "run_command":
 				return runCommand(asString(args.get("command")));
+			case "get_problems":
+				return env == null ? ENV_NA : safe(env.getProblems());
+			case "get_console":
+				return env == null ? ENV_NA : safe(env.getConsole());
+			case "list_servers":
+				return env == null ? ENV_NA : safe(env.listServers());
+			case "start_server":
+				return controlServer(asString(args.get("name")), true);
+			case "stop_server":
+				return controlServer(asString(args.get("name")), false);
 			default:
 				return "알 수 없는 도구: " + name;
 			}
@@ -479,6 +528,24 @@ public class OllamaAgent {
 		}
 		int exit = done ? proc.exitValue() : -1;
 		return "exit=" + exit + "\n" + out;
+	}
+
+	private String controlServer(String name, boolean start) {
+		if (env == null) {
+			return ENV_NA;
+		}
+		if (name == null || name.trim().isEmpty()) {
+			return "name 이 필요합니다(list_servers 로 서버 이름 확인)";
+		}
+		String action = start ? "기동" : "중지";
+		if (!confirm.ask("Ollama Agent — 서버 " + action + " 확인", "서버 '" + name + "' 를 " + action + "합니다.")) {
+			return "사용자가 서버 " + action + "을 취소했습니다.";
+		}
+		return safe(start ? env.startServer(name) : env.stopServer(name));
+	}
+
+	private static String safe(String s) {
+		return s == null ? "(결과 없음)" : s;
 	}
 
 	// ===================== 파일 IO 헬퍼 =====================

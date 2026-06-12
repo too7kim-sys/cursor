@@ -23,6 +23,7 @@ import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.part.ViewPart;
 
 import com.egov.ollama.assist.Activator;
+import com.egov.ollama.assist.EclipseEnvironment;
 import com.egov.ollama.assist.OllamaAgent;
 import com.egov.ollama.assist.OllamaClient;
 import com.egov.ollama.assist.WorkspaceUtil;
@@ -178,7 +179,8 @@ public class ChatView extends ViewPart {
 					OllamaAgent agent = new OllamaAgent(base, model, system, root, enableRun,
 							text -> appendAsync(text),
 							(title, message) -> confirm(title, message),
-							cancel::get);
+							cancel::get,
+							new EclipseEnvironment());
 					agent.run(userPrompt);
 					WorkspaceUtil.refresh();
 				} catch (Exception ex) {

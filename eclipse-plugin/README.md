@@ -30,6 +30,15 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 | `create_file` | 새 파일 생성 | ✅ |
 | `write_file` | 파일 전체 덮어쓰기 | ✅ |
 | `run_command` | 빌드/테스트 등 명령 실행 (**기본 비활성**) | ✅ |
+| `get_problems` | **Eclipse Problems**(컴파일 오류/경고) 목록 분석 | - |
+| `get_console` | **Eclipse Console** 최근 출력(빌드/실행 로그) 분석 | - |
+| `list_servers` | 등록 서버(Tomcat 등)와 상태 | - |
+| `start_server` / `stop_server` | 서버 기동/중지(WTP) | ✅ |
+
+> **Problems/Console/Servers 연동**: AI가 컴파일 오류를 `get_problems` 로 직접 읽어 고치고, 빌드 로그를 `get_console` 로 확인하며, Tomcat 등을 `start_server`/`stop_server` 로 제어합니다.
+> - 예: *"컴파일 오류 다 고쳐줘"* → get_problems 로 오류 목록 확인 → read_file/apply_edit 로 수정 반복
+> - 예: *"Tomcat 재시작하고 콘솔 확인해줘"* → stop_server → start_server → get_console
+> - 서버 제어는 **WTP(org.eclipse.wst.server.core)** 가 있는 Eclipse(eGovFrame IDE 등)에서 동작하며, 없으면 안내 메시지를 반환합니다(리플렉션 호출이라 빌드는 영향 없음).
 
 ### Agent 동작 방식
 1. 모델에 위 도구를 제공하고 사용자 요청 전달
