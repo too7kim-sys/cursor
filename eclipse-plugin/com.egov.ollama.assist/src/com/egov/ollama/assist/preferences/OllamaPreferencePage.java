@@ -1,5 +1,6 @@
 package com.egov.ollama.assist.preferences;
 
+import org.eclipse.jface.preference.BooleanFieldEditor;
 import org.eclipse.jface.preference.FieldEditorPreferencePage;
 import org.eclipse.jface.preference.StringFieldEditor;
 import org.eclipse.ui.IWorkbench;
@@ -27,6 +28,9 @@ public class OllamaPreferencePage extends FieldEditorPreferencePage implements I
 		StringFieldEditor sys = new StringFieldEditor(PreferenceConstants.P_SYSTEM,
 				"시스템 프롬프트:", getFieldEditorParent());
 		addField(sys);
+		addField(new BooleanFieldEditor(PreferenceConstants.P_ENABLE_RUN,
+				"Agent 의 명령 실행(run_command) 허용 (주의: 빌드/테스트 등 실제 실행)",
+				getFieldEditorParent()));
 	}
 
 	@Override

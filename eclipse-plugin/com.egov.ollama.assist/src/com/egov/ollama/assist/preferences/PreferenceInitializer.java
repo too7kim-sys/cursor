@@ -17,5 +17,6 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer {
 		store.setDefault(PreferenceConstants.P_MODEL, "qwen3-coder:30b");
 		store.setDefault(PreferenceConstants.P_SYSTEM,
 				"모든 답변과 설명은 반드시 한국어로 작성하세요. 코드 주석도 한국어로 작성하세요. 절대 중국어로 답변하지 마세요.");
+		store.setDefault(PreferenceConstants.P_ENABLE_RUN, false);
 	}
 }

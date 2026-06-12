@@ -11,24 +11,39 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 | 기능 | 지원 | 설명 |
 |------|------|------|
 | AI 채팅 (스트리밍) | ✅ | 전용 뷰에서 질문/답변, 실시간 스트리밍 출력 |
-| **Agent (파일 자동 탐색·수정)** | ✅ | 뷰의 "Agent 모드" 체크 → AI가 `list_files`/`read_file`/`write_file` 도구로 프로젝트를 직접 수정(수정 전 확인 다이얼로그) |
+| **Agent (Claude Code 수준)** | ✅ | 검색·읽기·**부분 수정**·생성·덮어쓰기·**명령 실행**을 자율 수행(변경 전 확인) |
 | 선택 코드 설명 | ✅ | 편집기에서 코드 선택 → 우클릭 → Ollama Assist > 코드 설명 |
 | 선택 코드 리팩터링 제안 | ✅ | 우클릭 → Ollama Assist > 리팩터링 제안 |
+| 작업 중지 | ✅ | 긴 Agent 작업을 [중지] 버튼으로 취소 |
 | 한국어 응답 강제 | ✅ | 시스템 프롬프트 기본 내장(Preferences에서 변경) |
 | 서버/모델 설정 | ✅ | Window > Preferences > Ollama Assist |
 
 > **Agent 모드는 도구 호출(tool_use) 지원 모델이 필요합니다.** `qwen3-coder:30b` 처럼 tool 지원 모델을 쓰세요.
-> 모델·서버가 `tool_calls` 를 구조화해 반환하는지 확인: `curl http://서버:11434/api/chat -d '{"model":"qwen3-coder:30b","messages":[{"role":"user","content":"list files"}],"tools":[{"type":"function","function":{"name":"ls","parameters":{"type":"object","properties":{}}}}],"stream":false}'`
+
+### Agent 도구 (Claude Code 유사)
+| 도구 | 설명 | 확인 |
+|------|------|------|
+| `list_files` | 프로젝트 파일/폴더 목록(재귀) | - |
+| `search_text` | 전체 프로젝트 문자열 검색(파일:줄) | - |
+| `read_file` | 파일 내용 읽기 | - |
+| `apply_edit` | **부분 수정** — old_text→new_text 한 곳만 교체(diff 미리보기) | ✅ |
+| `create_file` | 새 파일 생성 | ✅ |
+| `write_file` | 파일 전체 덮어쓰기 | ✅ |
+| `run_command` | 빌드/테스트 등 명령 실행 (**기본 비활성**) | ✅ |
 
 ### Agent 동작 방식
-1. 모델에 도구(list_files/read_file/write_file)를 제공하고 사용자 요청 전달
-2. 모델이 `tool_calls` 반환 → 플러그인이 **프로젝트 루트 내에서만** 실행 (경로 이탈 차단)
-3. `write_file` 은 **확인 다이얼로그**(새 내용 미리보기) 후 적용 → 워크스페이스 자동 새로고침
-4. 모델이 더 호출할 도구가 없을 때까지 반복(최대 12회) 후 한국어 요약
+1. 모델에 위 도구를 제공하고 사용자 요청 전달
+2. 모델이 `tool_calls` 반환 → 플러그인이 **프로젝트 루트 내에서만** 실행(경로 이탈 차단)
+3. 파일 변경/명령 실행은 **확인 다이얼로그**(diff·미리보기) 후 적용 → 워크스페이스 자동 새로고침
+4. 더 호출할 도구가 없을 때까지 반복(최대 25회) 후 한국어로 작업 요약
+5. **[중지]** 버튼으로 언제든 취소(진행 중인 한 단계 후 멈춤)
+
+### ⚠️ run_command (명령 실행)
+- **기본 비활성**입니다. Window > Preferences > Ollama Assist 의 *"Agent 의 명령 실행 허용"* 을 켜야 사용됩니다.
+- 켜더라도 실행 직전 **확인 다이얼로그**로 명령을 보여주고 승인받습니다. 작업 폴더는 프로젝트 루트, 120초 타임아웃.
 
 ### 이번 버전에서 제외 (로드맵)
 - 인라인 자동완성(FIM) — Eclipse content-assist 깊은 연동 필요
-- 부분 편집(diff/patch) — 현재 write_file 은 파일 전체 덮어쓰기 방식
 - @codebase 임베딩 검색 — 인덱서 필요
 
 > 자동완성·Agent·코드베이스 검색까지 필요하면 **VS Code + Continue** 를 병행하세요

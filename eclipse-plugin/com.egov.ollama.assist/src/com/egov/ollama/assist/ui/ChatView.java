@@ -1,6 +1,7 @@
 package com.egov.ollama.assist.ui;
 
 import java.io.File;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
@@ -31,9 +32,8 @@ import com.egov.ollama.assist.preferences.PreferenceConstants;
  * Ollama 채팅/에이전트 뷰.
  * <ul>
  * <li>일반 모드: /api/chat 스트리밍 채팅</li>
- * <li>Agent 모드: 도구 호출 루프로 프로젝트 파일을 탐색/수정(write 시 확인 다이얼로그)</li>
+ * <li>Agent 모드: 도구 호출 루프(검색/읽기/부분수정/생성/덮어쓰기/명령실행)로 프로젝트를 직접 다룸</li>
  * </ul>
- * 모든 네트워크 작업은 백그라운드 Job 에서 수행하고, 출력은 UI 스레드로 안전하게 전달한다.
  */
 public class ChatView extends ViewPart {
 
@@ -42,23 +42,25 @@ public class ChatView extends ViewPart {
 	private StyledText output;
 	private Text input;
 	private Button sendBtn;
+	private Button stopBtn;
 	private Button agentCheck;
 	private volatile boolean busy;
+	private volatile AtomicBoolean currentCancel;
 
 	@Override
 	public void createPartControl(Composite parent) {
-		parent.setLayout(new GridLayout(2, false));
+		parent.setLayout(new GridLayout(3, false));
 
 		output = new StyledText(parent, SWT.MULTI | SWT.READ_ONLY | SWT.WRAP | SWT.V_SCROLL | SWT.BORDER);
-		output.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 2, 1));
+		output.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 3, 1));
 		output.setText("Ollama Assist 준비됨.\n"
 				+ "· 일반 질문: 입력 후 [보내기] 또는 Ctrl+Enter\n"
-				+ "· Agent 모드 체크 시: AI가 프로젝트 파일을 직접 읽고 수정합니다(수정 전 확인).\n"
-				+ "· 서버/모델: Window > Preferences > Ollama Assist\n");
+				+ "· Agent 모드: AI가 프로젝트를 직접 검색/읽기/수정/생성합니다(변경 전 확인).\n"
+				+ "· 서버/모델/명령실행 허용: Window > Preferences > Ollama Assist\n");
 
 		agentCheck = new Button(parent, SWT.CHECK);
 		agentCheck.setText("Agent 모드 (파일 자동 탐색·수정)");
-		agentCheck.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+		agentCheck.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
 
 		input = new Text(parent, SWT.MULTI | SWT.WRAP | SWT.V_SCROLL | SWT.BORDER);
 		GridData inData = new GridData(SWT.FILL, SWT.FILL, true, false);
@@ -67,7 +69,6 @@ public class ChatView extends ViewPart {
 		input.addKeyListener(new org.eclipse.swt.events.KeyAdapter() {
 			@Override
 			public void keyPressed(org.eclipse.swt.events.KeyEvent e) {
-				// Ctrl+Enter 전송 (멀티라인 Text 에서는 KeyListener 가 안정적)
 				if ((e.keyCode == SWT.CR || e.keyCode == SWT.KEYPAD_CR) && (e.stateMask & SWT.CTRL) != 0) {
 					e.doit = false;
 					doSend();
@@ -82,6 +83,20 @@ public class ChatView extends ViewPart {
 			@Override
 			public void widgetSelected(SelectionEvent e) {
 				doSend();
+			}
+		});
+
+		stopBtn = new Button(parent, SWT.PUSH);
+		stopBtn.setText("중지");
+		stopBtn.setEnabled(false);
+		stopBtn.setLayoutData(new GridData(SWT.FILL, SWT.FILL, false, false));
+		stopBtn.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				if (currentCancel != null) {
+					currentCancel.set(true);
+					append("\n[중지 요청됨 — 현재 단계 후 멈춥니다]\n");
+				}
 			}
 		});
 	}
@@ -99,7 +114,6 @@ public class ChatView extends ViewPart {
 		}
 	}
 
-	/** 코드 컨텍스트를 곁들여 질문(핸들러에서 호출). */
 	public void askWithCode(String instruction, String code, String lang) {
 		String fence = lang == null ? "" : lang;
 		ask(instruction + "\n\n```" + fence + "\n" + code + "\n```");
@@ -118,7 +132,7 @@ public class ChatView extends ViewPart {
 		final String system = store.getString(PreferenceConstants.P_SYSTEM);
 
 		append("\n\n🧑 나:\n" + userPrompt + "\n\n🤖 " + model + ":\n");
-		startBusy();
+		startBusy(false);
 		Job job = new Job("Ollama 요청") {
 			@Override
 			protected IStatus run(IProgressMonitor monitor) {
@@ -150,16 +164,21 @@ public class ChatView extends ViewPart {
 		final String base = store.getString(PreferenceConstants.P_BASE_URL);
 		final String model = store.getString(PreferenceConstants.P_MODEL);
 		final String system = store.getString(PreferenceConstants.P_SYSTEM);
+		final boolean enableRun = store.getBoolean(PreferenceConstants.P_ENABLE_RUN);
+
+		final AtomicBoolean cancel = new AtomicBoolean(false);
+		currentCancel = cancel;
 
 		append("\n\n🧑 나(Agent):\n" + userPrompt + "\n\n🤖 " + model + " [Agent @ " + root.getName() + "]:\n");
-		startBusy();
+		startBusy(true);
 		Job job = new Job("Ollama Agent") {
 			@Override
 			protected IStatus run(IProgressMonitor monitor) {
 				try {
-					OllamaAgent agent = new OllamaAgent(base, model, system, root,
+					OllamaAgent agent = new OllamaAgent(base, model, system, root, enableRun,
 							text -> appendAsync(text),
-							(path, oldC, newC) -> confirmWrite(path, oldC, newC));
+							(title, message) -> confirm(title, message),
+							cancel::get);
 					agent.run(userPrompt);
 					WorkspaceUtil.refresh();
 				} catch (Exception ex) {
@@ -171,13 +190,12 @@ public class ChatView extends ViewPart {
 				return Status.OK_STATUS;
 			}
 		};
-		// 확인 다이얼로그와 겹치지 않도록 모달 진행 대화상자 대신 백그라운드로 실행
 		job.setUser(false);
 		job.schedule();
 	}
 
-	/** write_file 확인 다이얼로그(UI 스레드 동기 실행). */
-	private boolean confirmWrite(final String relPath, final String oldContent, final String newContent) {
+	/** 변경/명령 확인 다이얼로그(UI 스레드 동기 실행). */
+	private boolean confirm(final String title, final String message) {
 		final boolean[] result = { false };
 		Display display = Display.getDefault();
 		if (display == null || display.isDisposed()) {
@@ -191,11 +209,7 @@ public class ChatView extends ViewPart {
 				tempShell = true;
 			}
 			try {
-				String preview = newContent.length() > 1500 ? newContent.substring(0, 1500) + "\n...(미리보기 생략)"
-						: newContent;
-				String head = oldContent.isEmpty() ? "[새 파일 생성]\n" : "[기존 파일 덮어쓰기]\n";
-				result[0] = MessageDialog.openConfirm(shell, "Ollama Agent — 파일 수정 확인",
-						head + relPath + "\n\n[새 내용 미리보기]\n" + preview);
+				result[0] = MessageDialog.openConfirm(shell, title, message);
 			} finally {
 				if (tempShell) {
 					shell.dispose();
@@ -207,14 +221,17 @@ public class ChatView extends ViewPart {
 
 	// ===================== 출력/상태 =====================
 
-	private void startBusy() {
+	private void startBusy(boolean agent) {
 		busy = true;
 		setSendEnabled(false);
+		setStopEnabled(agent);
 	}
 
 	private void endBusyAsync() {
 		busy = false;
+		currentCancel = null;
 		setSendEnabledAsync(true);
+		setStopEnabledAsync(false);
 	}
 
 	private void append(String s) {
@@ -244,6 +261,20 @@ public class ChatView extends ViewPart {
 			return;
 		}
 		display.asyncExec(() -> setSendEnabled(enabled));
+	}
+
+	private void setStopEnabled(boolean enabled) {
+		if (stopBtn != null && !stopBtn.isDisposed()) {
+			stopBtn.setEnabled(enabled);
+		}
+	}
+
+	private void setStopEnabledAsync(final boolean enabled) {
+		Display display = Display.getDefault();
+		if (display == null || display.isDisposed()) {
+			return;
+		}
+		display.asyncExec(() -> setStopEnabled(enabled));
 	}
 
 	@Override
