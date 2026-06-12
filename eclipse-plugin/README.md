@@ -72,6 +72,8 @@ eclipse-plugin/com.egov.ollama.assist/
 3. 이 jar 를 Eclipse 설치 폴더의 **`dropins/`** 에 복사 → Eclipse 재시작
    - 또는 다른 PC에 배포 시에도 `dropins/` 에 넣으면 됩니다(동일 폐쇄망 내 복사).
 
+> 📦 **수동 설치/삭제 상세 + 자동 스크립트**: [INSTALL.md](INSTALL.md), [install.bat](install.bat), [uninstall.bat](uninstall.bat)
+
 > JDK 17 이상이 필요합니다. eGov 환경이면 `eclipse.ini` 의 `-vm` 에
 > `C:\eGovFrameDev-5.0.0\bin\jdk-17\bin` 을 지정하세요.
 
