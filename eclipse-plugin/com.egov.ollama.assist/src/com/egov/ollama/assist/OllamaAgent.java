@@ -50,6 +50,11 @@ public class OllamaAgent {
 		String stopServer(String name);
 	}
 
+	/** 코드베이스 의미 검색(RAG). 색인이 없으면 null. */
+	public interface Retriever {
+		String search(String query) throws Exception;
+	}
+
 	private static final String ENV_NA = "이 기능은 현재 사용할 수 없습니다(Eclipse 환경 미연결).";
 
 	private static final int MAX_ITER = 25;
@@ -67,9 +72,10 @@ public class OllamaAgent {
 	private final boolean enableRun;
 	private final BooleanSupplier cancelled;
 	private final Environment env;
+	private final Retriever retriever;
 
 	public OllamaAgent(String base, String model, String system, File root, boolean enableRun,
-			Logger log, Confirm confirm, BooleanSupplier cancelled, Environment env) {
+			Logger log, Confirm confirm, BooleanSupplier cancelled, Environment env, Retriever retriever) {
 		this.base = base;
 		this.model = model;
 		this.system = system;
@@ -79,6 +85,7 @@ public class OllamaAgent {
 		this.confirm = confirm;
 		this.cancelled = cancelled;
 		this.env = env;
+		this.retriever = retriever;
 	}
 
 	public void run(String userPrompt) throws IOException {
@@ -171,7 +178,10 @@ public class OllamaAgent {
 		StringBuilder sb = new StringBuilder();
 		sb.append("당신은 숙련된 코드 작업 에이전트입니다. 제공된 도구로 프로젝트를 직접 탐색·수정하세요.\n");
 		sb.append("작업 원칙:\n");
-		sb.append("1) 추측하지 말고 list_files/search_text/read_file 로 실제 코드를 먼저 확인한다.\n");
+		sb.append("1) 추측하지 말고 search_text(정확한 키워드)/semantic_search(의미 기반)/list_files/read_file 로 실제 코드를 먼저 확인한다.\n");
+		if (retriever != null) {
+			sb.append("   - 어디를 봐야 할지 모호하면 semantic_search 로 관련 코드를 먼저 찾는다(프로젝트 패턴을 따른다).\n");
+		}
 		sb.append("2) 기존 파일 수정은 가능한 한 apply_edit(부분 수정)을 사용한다. old_text 는 파일에서 유일하게 식별되는 충분한 길이로 제시한다.\n");
 		sb.append("3) 새 파일은 create_file 로 만든다. 파일 전체를 바꿔야 할 때만 write_file 을 쓴다.\n");
 		if (enableRun) {
@@ -202,6 +212,14 @@ public class OllamaAgent {
 		p = new LinkedHashMap<>();
 		p.put("query", prop("string", "찾을 문자열"));
 		tools.add(func("search_text", "프로젝트 전체에서 문자열을 검색해 파일:줄 위치를 반환", p, Arrays.asList("query")));
+
+		if (retriever != null) {
+			p = new LinkedHashMap<>();
+			p.put("query", prop("string", "자연어 또는 코드로 된 검색 의도"));
+			tools.add(func("semantic_search",
+					"코드베이스 의미 검색(RAG). 키워드가 정확치 않아도 의미가 가까운 코드 조각을 찾아 반환",
+					p, Arrays.asList("query")));
+		}
 
 		p = new LinkedHashMap<>();
 		p.put("path", prop("string", "새 파일 경로"));
@@ -283,6 +301,9 @@ public class OllamaAgent {
 				return readFile(asString(args.get("path")));
 			case "search_text":
 				return searchText(asString(args.get("query")));
+			case "semantic_search":
+				return retriever == null ? "코드 색인이 없습니다(뷰의 [색인] 버튼으로 생성하세요)."
+						: safe(retriever.search(asString(args.get("query"))));
 			case "create_file":
 				return createFile(asString(args.get("path")), asString(args.get("content")));
 			case "apply_edit":

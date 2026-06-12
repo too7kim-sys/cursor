@@ -23,6 +23,7 @@ import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.part.ViewPart;
 
 import com.egov.ollama.assist.Activator;
+import com.egov.ollama.assist.CodebaseIndex;
 import com.egov.ollama.assist.EclipseEnvironment;
 import com.egov.ollama.assist.OllamaAgent;
 import com.egov.ollama.assist.OllamaClient;
@@ -45,8 +46,11 @@ public class ChatView extends ViewPart {
 	private Button sendBtn;
 	private Button stopBtn;
 	private Button agentCheck;
+	private Button indexBtn;
 	private volatile boolean busy;
 	private volatile AtomicBoolean currentCancel;
+	private volatile CodebaseIndex index;
+	private volatile File indexRoot;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -61,7 +65,18 @@ public class ChatView extends ViewPart {
 
 		agentCheck = new Button(parent, SWT.CHECK);
 		agentCheck.setText("Agent 모드 (파일 자동 탐색·수정)");
-		agentCheck.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
+		agentCheck.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+
+		indexBtn = new Button(parent, SWT.PUSH);
+		indexBtn.setText("색인");
+		indexBtn.setToolTipText("활성 프로젝트를 임베딩으로 색인(RAG). Agent 의 semantic_search 에 사용");
+		indexBtn.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, false, false));
+		indexBtn.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				buildIndex();
+			}
+		});
 
 		input = new Text(parent, SWT.MULTI | SWT.WRAP | SWT.V_SCROLL | SWT.BORDER);
 		GridData inData = new GridData(SWT.FILL, SWT.FILL, true, false);
@@ -166,6 +181,7 @@ public class ChatView extends ViewPart {
 		final String model = store.getString(PreferenceConstants.P_MODEL);
 		final String system = store.getString(PreferenceConstants.P_SYSTEM);
 		final boolean enableRun = store.getBoolean(PreferenceConstants.P_ENABLE_RUN);
+		final String embedModel = store.getString(PreferenceConstants.P_EMBED_MODEL);
 
 		final AtomicBoolean cancel = new AtomicBoolean(false);
 		currentCancel = cancel;
@@ -176,11 +192,15 @@ public class ChatView extends ViewPart {
 			@Override
 			protected IStatus run(IProgressMonitor monitor) {
 				try {
+					ensureIndex(root, base, embedModel); // 저장된 색인이 있으면 로드
+					final OllamaAgent.Retriever retriever = (index != null && index.size() > 0
+							&& root.equals(indexRoot)) ? (q -> index.search(q, 5)) : null;
 					OllamaAgent agent = new OllamaAgent(base, model, system, root, enableRun,
 							text -> appendAsync(text),
 							(title, message) -> confirm(title, message),
 							cancel::get,
-							new EclipseEnvironment());
+							new EclipseEnvironment(),
+							retriever);
 					agent.run(userPrompt);
 					WorkspaceUtil.refresh();
 				} catch (Exception ex) {
@@ -194,6 +214,71 @@ public class ChatView extends ViewPart {
 		};
 		job.setUser(false);
 		job.schedule();
+	}
+
+	// ===================== 코드 색인(RAG) =====================
+
+	private void buildIndex() {
+		if (busy) {
+			return;
+		}
+		final File root = WorkspaceUtil.activeProjectDir();
+		if (root == null) {
+			append("\n[안내] 활성 프로젝트를 찾을 수 없습니다.\n");
+			return;
+		}
+		IPreferenceStore store = Activator.getDefault().getPreferenceStore();
+		final String base = store.getString(PreferenceConstants.P_BASE_URL);
+		final String embedModel = store.getString(PreferenceConstants.P_EMBED_MODEL);
+
+		final AtomicBoolean cancel = new AtomicBoolean(false);
+		currentCancel = cancel;
+		append("\n\n📚 코드 색인 시작: " + root.getName() + " (임베딩 모델: " + embedModel + ")\n");
+		startBusy(true);
+		Job job = new Job("Ollama 코드 색인") {
+			@Override
+			protected IStatus run(IProgressMonitor monitor) {
+				try {
+					CodebaseIndex idx = new CodebaseIndex(root,
+							text -> OllamaClient.embed(base, embedModel, text));
+					int n = idx.build(cancel::get, m -> appendAsync("\n" + m));
+					if (n > 0) {
+						idx.save(new File(root, ".ollama-assist/index.json"));
+						index = idx;
+						indexRoot = root;
+						appendAsync("\n✅ 색인 완료 및 저장: " + n + " 청크 (.ollama-assist/index.json)\n");
+					} else {
+						appendAsync("\n[안내] 색인된 내용이 없습니다(취소되었거나 대상 파일 없음).\n");
+					}
+				} catch (Exception ex) {
+					appendAsync("\n\n[색인 오류] " + ex.getMessage()
+							+ "\n임베딩 모델이 서버에 있는지(ollama list), Preferences 의 임베딩 모델명을 확인하세요.\n");
+				} finally {
+					endBusyAsync();
+				}
+				return Status.OK_STATUS;
+			}
+		};
+		job.setUser(false);
+		job.schedule();
+	}
+
+	/** 메모리에 색인이 없으면 디스크에서 로드 시도(Job 스레드에서 호출). */
+	private void ensureIndex(File root, String base, String embedModel) {
+		if (index != null && root.equals(indexRoot)) {
+			return;
+		}
+		File f = new File(root, ".ollama-assist/index.json");
+		CodebaseIndex idx = new CodebaseIndex(root, text -> OllamaClient.embed(base, embedModel, text));
+		try {
+			if (idx.load(f)) {
+				index = idx;
+				indexRoot = root;
+				appendAsync("(저장된 코드 색인 로드: " + idx.size() + " 청크)\n");
+			}
+		} catch (Exception ignore) {
+			// 색인 없으면 무시
+		}
 	}
 
 	/** 변경/명령 확인 다이얼로그(UI 스레드 동기 실행). */
@@ -254,6 +339,9 @@ public class ChatView extends ViewPart {
 	private void setSendEnabled(boolean enabled) {
 		if (sendBtn != null && !sendBtn.isDisposed()) {
 			sendBtn.setEnabled(enabled);
+		}
+		if (indexBtn != null && !indexBtn.isDisposed()) {
+			indexBtn.setEnabled(enabled);
 		}
 	}
 

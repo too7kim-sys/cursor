@@ -25,6 +25,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 |------|------|------|
 | `list_files` | 프로젝트 파일/폴더 목록(재귀) | - |
 | `search_text` | 전체 프로젝트 문자열 검색(파일:줄) | - |
+| `semantic_search` | **코드베이스 의미 검색(RAG)** — 키워드가 정확치 않아도 의미가 가까운 코드를 찾음(색인 필요) | - |
 | `read_file` | 파일 내용 읽기 | - |
 | `apply_edit` | **부분 수정** — old_text→new_text 한 곳만 교체(diff 미리보기) | ✅ |
 | `create_file` | 새 파일 생성 | ✅ |
@@ -51,9 +52,21 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 - **기본 비활성**입니다. Window > Preferences > Ollama Assist 의 *"Agent 의 명령 실행 허용"* 을 켜야 사용됩니다.
 - 켜더라도 실행 직전 **확인 다이얼로그**로 명령을 보여주고 승인받습니다. 작업 폴더는 프로젝트 루트, 120초 타임아웃.
 
+### 코드베이스 학습(RAG) — 파인튜닝 없이 "프로젝트를 아는" 효과
+파인튜닝 대신 **임베딩 색인 + 의미 검색**으로 프로젝트 맥락을 활용합니다(폐쇄망 적합).
+
+1. 뷰의 **[색인]** 버튼 → 활성 프로젝트를 임베딩 모델(기본 `nomic-embed-text`)로 색인
+   - 결과는 `<프로젝트>/.ollama-assist/index.json` 에 저장되어 재시작 후에도 재사용(자동 로드)
+   - 큰 프로젝트는 시간이 걸리며 [중지]로 취소 가능(최대 4000 청크)
+2. Agent 가 **`semantic_search`** 도구로 의미가 가까운 코드를 찾아 그 패턴대로 구현
+   - 예: *"기존 게시판 CRUD와 같은 구조로 공지사항 만들어줘"* → 관련 코드 검색 후 동일 스타일 작성
+3. 임베딩 모델은 Window > Preferences > Ollama Assist 에서 변경(`bge-m3` 등)
+
+> 코드가 바뀌면 [색인]만 다시 누르면 됩니다(학습 불필요). 정확한 키워드 검색은 `search_text`, 모호한 의미 검색은 `semantic_search` 를 씁니다.
+
 ### 이번 버전에서 제외 (로드맵)
 - 인라인 자동완성(FIM) — Eclipse content-assist 깊은 연동 필요
-- @codebase 임베딩 검색 — 인덱서 필요
+- 채팅(비-Agent) 자동 RAG 주입 — 현재는 Agent 의 semantic_search 도구로 제공
 
 > 자동완성·Agent·코드베이스 검색까지 필요하면 **VS Code + Continue** 를 병행하세요
 > (저장소의 `docs/local-dev-setup-windows.md`).

@@ -25,6 +25,8 @@ public class OllamaPreferencePage extends FieldEditorPreferencePage implements I
 				"Ollama 서버 URL:", getFieldEditorParent()));
 		addField(new StringFieldEditor(PreferenceConstants.P_MODEL,
 				"모델 이름:", getFieldEditorParent()));
+		addField(new StringFieldEditor(PreferenceConstants.P_EMBED_MODEL,
+				"임베딩 모델(코드 색인용):", getFieldEditorParent()));
 		StringFieldEditor sys = new StringFieldEditor(PreferenceConstants.P_SYSTEM,
 				"시스템 프롬프트:", getFieldEditorParent());
 		addField(sys);

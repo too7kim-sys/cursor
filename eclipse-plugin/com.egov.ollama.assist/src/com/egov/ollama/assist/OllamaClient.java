@@ -22,6 +22,29 @@ public class OllamaClient {
 		void onText(String delta);
 	}
 
+	/**
+	 * 임베딩 1건 요청(/api/embeddings). 실패 시 IOException.
+	 */
+	public static float[] embed(String baseUrl, String model, String text) throws IOException {
+		String body = "{\"model\":" + JsonUtil.quote(model) + ",\"prompt\":" + JsonUtil.quote(text) + "}";
+		String resp = post(baseUrl, "/api/embeddings", body);
+		Object parsed = Json.parse(resp);
+		if (!(parsed instanceof java.util.Map)) {
+			throw new IOException("임베딩 응답 형식 오류");
+		}
+		Object emb = ((java.util.Map<?, ?>) parsed).get("embedding");
+		if (!(emb instanceof java.util.List)) {
+			throw new IOException("embedding 필드를 찾을 수 없습니다(모델/엔드포인트 확인)");
+		}
+		java.util.List<?> l = (java.util.List<?>) emb;
+		float[] v = new float[l.size()];
+		for (int i = 0; i < l.size(); i++) {
+			Object n = l.get(i);
+			v[i] = (n instanceof Number) ? ((Number) n).floatValue() : 0f;
+		}
+		return v;
+	}
+
 	private OllamaClient() {
 	}
 
