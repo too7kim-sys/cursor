@@ -146,6 +146,7 @@ public class ChatView extends ViewPart {
 		final String base = store.getString(PreferenceConstants.P_BASE_URL);
 		final String model = store.getString(PreferenceConstants.P_MODEL);
 		final String system = store.getString(PreferenceConstants.P_SYSTEM);
+		final double temperature = parseTemp(store.getString(PreferenceConstants.P_TEMPERATURE));
 
 		append("\n\n🧑 나:\n" + userPrompt + "\n\n🤖 " + model + ":\n");
 		startBusy(false);
@@ -153,7 +154,7 @@ public class ChatView extends ViewPart {
 			@Override
 			protected IStatus run(IProgressMonitor monitor) {
 				try {
-					OllamaClient.chatStream(base, model, system, userPrompt, delta -> appendAsync(delta));
+					OllamaClient.chatStream(base, model, system, userPrompt, temperature, delta -> appendAsync(delta));
 				} catch (Exception ex) {
 					appendAsync("\n\n[오류] " + ex.getMessage()
 							+ "\n서버 설정(Window > Preferences > Ollama Assist)과 연결을 확인하세요.");
@@ -182,6 +183,8 @@ public class ChatView extends ViewPart {
 		final String system = store.getString(PreferenceConstants.P_SYSTEM);
 		final boolean enableRun = store.getBoolean(PreferenceConstants.P_ENABLE_RUN);
 		final String embedModel = store.getString(PreferenceConstants.P_EMBED_MODEL);
+		final double temperature = parseTemp(store.getString(PreferenceConstants.P_TEMPERATURE));
+		final String verifyCmd = store.getString(PreferenceConstants.P_VERIFY_CMD);
 
 		final AtomicBoolean cancel = new AtomicBoolean(false);
 		currentCancel = cancel;
@@ -196,6 +199,7 @@ public class ChatView extends ViewPart {
 					final OllamaAgent.Retriever retriever = (index != null && index.size() > 0
 							&& root.equals(indexRoot)) ? (q -> index.search(q, 5)) : null;
 					OllamaAgent agent = new OllamaAgent(base, model, system, root, enableRun,
+							temperature, verifyCmd,
 							text -> appendAsync(text),
 							(title, message) -> confirm(title, message),
 							cancel::get,
@@ -365,6 +369,22 @@ public class ChatView extends ViewPart {
 			return;
 		}
 		display.asyncExec(() -> setStopEnabled(enabled));
+	}
+
+	/** temperature 문자열을 0.0~2.0 범위 double 로 파싱(잘못되면 0.2). */
+	private static double parseTemp(String s) {
+		try {
+			double t = Double.parseDouble(s.trim());
+			if (t < 0) {
+				return 0;
+			}
+			if (t > 2) {
+				return 2;
+			}
+			return t;
+		} catch (Exception e) {
+			return 0.2;
+		}
 	}
 
 	@Override

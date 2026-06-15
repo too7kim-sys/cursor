@@ -98,8 +98,8 @@ public class OllamaClient {
 	 * @param user    사용자 프롬프트
 	 * @param onChunk 응답 델타 콜백
 	 */
-	public static void chatStream(String baseUrl, String model, String system, String user, ChunkConsumer onChunk)
-			throws IOException {
+	public static void chatStream(String baseUrl, String model, String system, String user, double temperature,
+			ChunkConsumer onChunk) throws IOException {
 		String base = baseUrl == null ? "" : baseUrl.trim();
 		if (base.endsWith("/")) {
 			base = base.substring(0, base.length() - 1);
@@ -112,7 +112,7 @@ public class OllamaClient {
 			body.append("{\"role\":\"system\",\"content\":").append(JsonUtil.quote(system)).append("},");
 		}
 		body.append("{\"role\":\"user\",\"content\":").append(JsonUtil.quote(user)).append("}],");
-		body.append("\"stream\":true}");
+		body.append("\"stream\":true,\"options\":{\"temperature\":").append(temperature).append("}}");
 
 		HttpURLConnection con = (HttpURLConnection) url.openConnection();
 		con.setRequestMethod("POST");

@@ -33,6 +33,10 @@ public class OllamaPreferencePage extends FieldEditorPreferencePage implements I
 		addField(new BooleanFieldEditor(PreferenceConstants.P_ENABLE_RUN,
 				"Agent 의 명령 실행(run_command) 허용 (주의: 빌드/테스트 등 실제 실행)",
 				getFieldEditorParent()));
+		addField(new StringFieldEditor(PreferenceConstants.P_TEMPERATURE,
+				"temperature (코딩 권장 0.1~0.3):", getFieldEditorParent()));
+		addField(new StringFieldEditor(PreferenceConstants.P_VERIFY_CMD,
+				"자동 검증 명령 (예: mvn -q compile, 비우면 Problems 사용):", getFieldEditorParent()));
 	}
 
 	@Override

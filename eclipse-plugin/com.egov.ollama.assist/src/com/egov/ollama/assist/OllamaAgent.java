@@ -58,6 +58,7 @@ public class OllamaAgent {
 	private static final String ENV_NA = "이 기능은 현재 사용할 수 없습니다(Eclipse 환경 미연결).";
 
 	private static final int MAX_ITER = 25;
+	private static final int MAX_VERIFY = 3;
 	private static final int MAX_LIST = 400;
 	private static final int MAX_READ = 60000;
 	private static final int MAX_SEARCH = 100;
@@ -73,14 +74,20 @@ public class OllamaAgent {
 	private final BooleanSupplier cancelled;
 	private final Environment env;
 	private final Retriever retriever;
+	private final double temperature;
+	private final String verifyCommand;
+	private boolean edited;
 
 	public OllamaAgent(String base, String model, String system, File root, boolean enableRun,
+			double temperature, String verifyCommand,
 			Logger log, Confirm confirm, BooleanSupplier cancelled, Environment env, Retriever retriever) {
 		this.base = base;
 		this.model = model;
 		this.system = system;
 		this.root = root;
 		this.enableRun = enableRun;
+		this.temperature = temperature;
+		this.verifyCommand = verifyCommand;
 		this.log = log;
 		this.confirm = confirm;
 		this.cancelled = cancelled;
@@ -96,6 +103,7 @@ public class OllamaAgent {
 		}
 		messages.add(msg("system", agentSystemPrompt()));
 		messages.add(msg("user", userPrompt));
+		int verifyRounds = 0;
 
 		for (int iter = 0; iter < MAX_ITER; iter++) {
 			if (isCancelled()) {
@@ -105,7 +113,8 @@ public class OllamaAgent {
 			String body = "{\"model\":" + JsonUtil.quote(model)
 					+ ",\"messages\":" + Json.write(messages)
 					+ ",\"tools\":" + tools
-					+ ",\"stream\":false}";
+					+ ",\"stream\":false"
+					+ ",\"options\":{\"temperature\":" + temperature + "}}";
 
 			log.log("\n(모델 응답 생성 중… #" + (iter + 1) + ")\n");
 			String resp = OllamaClient.post(base, "/api/chat", body);
@@ -132,6 +141,20 @@ public class OllamaAgent {
 			String content = asString(message.get("content"));
 
 			if (toolCalls == null || toolCalls.isEmpty()) {
+				// 자동 검증 루프: 수정이 있었고 검증 수단이 있으면 빌드/오류를 확인해 실패 시 재수정
+				if (edited && verifyRounds < MAX_VERIFY && !isCancelled()) {
+					String verdict = autoVerify();
+					if (verdict != null) {
+						verifyRounds++;
+						log.log("\n🔁 자동 검증 실패 — 수정 재시도 (" + verifyRounds + "/" + MAX_VERIFY + ")\n");
+						edited = false;
+						messages.add(msg("user",
+								"자동 검증에서 문제가 발견되었습니다. 아래 내용을 분석해 코드를 수정하세요. "
+										+ "수정 후에는 추가 설명만 하세요.\n\n" + verdict));
+						continue;
+					}
+					log.log("\n✅ 자동 검증 통과\n");
+				}
 				if (content != null && !content.isEmpty()) {
 					log.log(content);
 				}
@@ -469,6 +492,7 @@ public class OllamaAgent {
 			return "사용자가 생성을 취소했습니다: " + rel;
 		}
 		write(f, content);
+		edited = true;
 		return "파일 생성 완료: " + rel + " (" + content.length() + " chars)";
 	}
 
@@ -497,6 +521,7 @@ public class OllamaAgent {
 			return "사용자가 수정을 취소했습니다: " + rel;
 		}
 		write(f, updated);
+		edited = true;
 		return "부분 수정 완료: " + rel;
 	}
 
@@ -512,6 +537,7 @@ public class OllamaAgent {
 			return "사용자가 저장을 취소했습니다: " + rel;
 		}
 		write(f, content);
+		edited = true;
 		return "저장 완료: " + rel + " (" + content.length() + " chars)";
 	}
 
@@ -525,6 +551,11 @@ public class OllamaAgent {
 		if (!confirm.ask("Ollama Agent — 명령 실행 확인", "작업 폴더: " + root.getName() + "\n\n$ " + command)) {
 			return "사용자가 명령 실행을 취소했습니다.";
 		}
+		return execShell(command);
+	}
+
+	/** 쉘 명령 실행(확인 없이). 반환 첫 줄은 "exit=N". */
+	private String execShell(String command) throws IOException, InterruptedException {
 		boolean win = System.getProperty("os.name", "").toLowerCase().contains("win");
 		ProcessBuilder pb = win ? new ProcessBuilder("cmd", "/c", command)
 				: new ProcessBuilder("sh", "-c", command);
@@ -549,6 +580,33 @@ public class OllamaAgent {
 		}
 		int exit = done ? proc.exitValue() : -1;
 		return "exit=" + exit + "\n" + out;
+	}
+
+	/**
+	 * 자동 검증. 통과/검증불가면 null, 실패면 모델에 전달할 문제 텍스트를 반환.
+	 * 1순위: 검증 명령(verifyCommand, enableRun 필요), 2순위: Eclipse Problems.
+	 */
+	private String autoVerify() {
+		if (verifyCommand != null && !verifyCommand.trim().isEmpty() && enableRun) {
+			try {
+				log.log("\n🔎 검증 실행: " + verifyCommand + "\n");
+				String out = execShell(verifyCommand);
+				return out.startsWith("exit=0") ? null : "검증 명령 실패:\n" + out;
+			} catch (Exception e) {
+				return "검증 명령 오류: " + e.getMessage();
+			}
+		}
+		if (env != null) {
+			log.log("\n🔎 Problems 검증 중…\n");
+			String probs = env.getProblems();
+			if (probs == null || probs.startsWith("오류 0개")) {
+				return null;
+			}
+			if (probs.startsWith("오류 ")) {
+				return "컴파일 오류/경고가 있습니다:\n" + probs;
+			}
+		}
+		return null;
 	}
 
 	private String controlServer(String name, boolean start) {
