@@ -47,6 +47,7 @@ public class ChatView extends ViewPart {
 	private Button stopBtn;
 	private Button agentCheck;
 	private Button indexBtn;
+	private Button indexDelBtn;
 	private volatile boolean busy;
 	private volatile AtomicBoolean currentCancel;
 	private volatile CodebaseIndex index;
@@ -64,8 +65,9 @@ public class ChatView extends ViewPart {
 				+ "· 서버/모델/명령실행 허용: Window > Preferences > Ollama Assist\n");
 
 		agentCheck = new Button(parent, SWT.CHECK);
-		agentCheck.setText("Agent 모드 (파일 자동 탐색·수정)");
-		agentCheck.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+		agentCheck.setText("Agent 모드");
+		agentCheck.setToolTipText("파일 자동 탐색·수정(검색/읽기/부분수정/생성/명령/검증)");
+		agentCheck.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
 		indexBtn = new Button(parent, SWT.PUSH);
 		indexBtn.setText("색인");
@@ -75,6 +77,17 @@ public class ChatView extends ViewPart {
 			@Override
 			public void widgetSelected(SelectionEvent e) {
 				buildIndex();
+			}
+		});
+
+		indexDelBtn = new Button(parent, SWT.PUSH);
+		indexDelBtn.setText("색인삭제");
+		indexDelBtn.setToolTipText("저장된 코드 색인(.ollama-assist/index.json)과 메모리 색인을 삭제");
+		indexDelBtn.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, false, false));
+		indexDelBtn.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				deleteIndex();
 			}
 		});
 
@@ -267,6 +280,31 @@ public class ChatView extends ViewPart {
 		job.schedule();
 	}
 
+	/** 저장된 색인 파일과 메모리 색인을 삭제. */
+	private void deleteIndex() {
+		if (busy) {
+			return;
+		}
+		File root = WorkspaceUtil.activeProjectDir();
+		if (root == null) {
+			append("\n[안내] 활성 프로젝트를 찾을 수 없습니다.\n");
+			return;
+		}
+		File f = new File(root, ".ollama-assist/index.json");
+		boolean exists = f.isFile();
+		boolean ok = MessageDialog.openConfirm(output.getShell(), "색인 삭제",
+				"코드 색인을 삭제합니다:\n" + f.getAbsolutePath()
+						+ (exists ? "" : "\n\n(저장된 파일이 없어 메모리 색인만 해제합니다)"));
+		if (!ok) {
+			return;
+		}
+		boolean deleted = !exists || f.delete();
+		index = null;
+		indexRoot = null;
+		append("\n🗑 색인 삭제됨" + (exists && !deleted ? " (파일 삭제 실패 — 사용 중이거나 권한 확인)" : "") + "\n");
+		WorkspaceUtil.refresh();
+	}
+
 	/** 메모리에 색인이 없으면 디스크에서 로드 시도(Job 스레드에서 호출). */
 	private void ensureIndex(File root, String base, String embedModel) {
 		if (index != null && root.equals(indexRoot)) {
@@ -346,6 +384,9 @@ public class ChatView extends ViewPart {
 		}
 		if (indexBtn != null && !indexBtn.isDisposed()) {
 			indexBtn.setEnabled(enabled);
+		}
+		if (indexDelBtn != null && !indexDelBtn.isDisposed()) {
+			indexDelBtn.setEnabled(enabled);
 		}
 	}
 

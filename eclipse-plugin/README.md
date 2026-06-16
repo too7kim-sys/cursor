@@ -75,6 +75,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 2. Agent 가 **`semantic_search`** 도구로 의미가 가까운 코드를 찾아 그 패턴대로 구현
    - 예: *"기존 게시판 CRUD와 같은 구조로 공지사항 만들어줘"* → 관련 코드 검색 후 동일 스타일 작성
 3. 임베딩 모델은 Window > Preferences > Ollama Assist 에서 변경(`bge-m3` 등)
+4. **[색인삭제]** 버튼 → 저장된 색인(`.ollama-assist/index.json`) + 메모리 색인 제거(확인 후)
 
 > 코드가 바뀌면 [색인]만 다시 누르면 됩니다(학습 불필요). 정확한 키워드 검색은 `search_text`, 모호한 의미 검색은 `semantic_search` 를 씁니다.
 
