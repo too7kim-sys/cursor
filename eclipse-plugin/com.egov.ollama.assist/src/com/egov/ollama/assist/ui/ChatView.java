@@ -16,6 +16,7 @@ import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
@@ -41,6 +42,7 @@ public class ChatView extends ViewPart {
 
 	public static final String ID = "com.egov.ollama.assist.chatView";
 
+	private Combo projectCombo;
 	private StyledText output;
 	private Text input;
 	private Button sendBtn;
@@ -56,6 +58,17 @@ public class ChatView extends ViewPart {
 	@Override
 	public void createPartControl(Composite parent) {
 		parent.setLayout(new GridLayout(3, false));
+
+		projectCombo = new Combo(parent, SWT.READ_ONLY | SWT.DROP_DOWN);
+		projectCombo.setToolTipText("작업 대상 프로젝트 (Agent·색인이 이 프로젝트에 적용됩니다)");
+		projectCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1));
+		projectCombo.addFocusListener(new org.eclipse.swt.events.FocusAdapter() {
+			@Override
+			public void focusGained(org.eclipse.swt.events.FocusEvent e) {
+				populateProjects();
+			}
+		});
+		populateProjects();
 
 		output = new StyledText(parent, SWT.MULTI | SWT.READ_ONLY | SWT.WRAP | SWT.V_SCROLL | SWT.BORDER);
 		output.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 3, 1));
@@ -185,7 +198,7 @@ public class ChatView extends ViewPart {
 	// ===================== Agent =====================
 
 	private void runAgent(final String userPrompt) {
-		final File root = WorkspaceUtil.activeProjectDir(); // UI 스레드에서 계산
+		final File root = selectedProjectDir(); // UI 스레드에서 계산(드롭다운 선택 우선)
 		if (root == null) {
 			append("\n[안내] 활성 프로젝트를 찾을 수 없습니다. 편집기에서 프로젝트 파일을 연 뒤 다시 시도하세요.\n");
 			return;
@@ -239,7 +252,7 @@ public class ChatView extends ViewPart {
 		if (busy) {
 			return;
 		}
-		final File root = WorkspaceUtil.activeProjectDir();
+		final File root = selectedProjectDir();
 		if (root == null) {
 			append("\n[안내] 활성 프로젝트를 찾을 수 없습니다.\n");
 			return;
@@ -285,7 +298,7 @@ public class ChatView extends ViewPart {
 		if (busy) {
 			return;
 		}
-		File root = WorkspaceUtil.activeProjectDir();
+		File root = selectedProjectDir();
 		if (root == null) {
 			append("\n[안내] 활성 프로젝트를 찾을 수 없습니다.\n");
 			return;
@@ -410,6 +423,37 @@ public class ChatView extends ViewPart {
 			return;
 		}
 		display.asyncExec(() -> setStopEnabled(enabled));
+	}
+
+	/** 대상 프로젝트 드롭다운을 열린 프로젝트로 채운다(UI 스레드). */
+	private void populateProjects() {
+		if (projectCombo == null || projectCombo.isDisposed()) {
+			return;
+		}
+		String prev = projectCombo.getText();
+		java.util.List<String> names = WorkspaceUtil.openProjectNames();
+		projectCombo.setItems(names.toArray(new String[0]));
+		String target = prev;
+		if (target == null || target.isEmpty() || !names.contains(target)) {
+			target = WorkspaceUtil.activeProjectName();
+		}
+		if (target != null && names.contains(target)) {
+			projectCombo.setText(target);
+		} else if (!names.isEmpty()) {
+			projectCombo.select(0);
+		}
+	}
+
+	/** 드롭다운에서 선택한 프로젝트 디렉터리(없으면 활성 편집기 기준). */
+	private File selectedProjectDir() {
+		String name = (projectCombo != null && !projectCombo.isDisposed()) ? projectCombo.getText() : null;
+		if (name != null && !name.isEmpty()) {
+			File f = WorkspaceUtil.projectDir(name);
+			if (f != null) {
+				return f;
+			}
+		}
+		return WorkspaceUtil.activeProjectDir();
 	}
 
 	/** temperature 문자열을 0.0~2.0 범위 double 로 파싱(잘못되면 0.2). */

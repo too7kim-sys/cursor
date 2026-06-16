@@ -133,6 +133,8 @@ eclipse-plugin/com.egov.ollama.assist/
 
 ## 사용법
 
+> **워크스페이스에 프로젝트가 여러 개면**, 뷰 맨 위의 **대상 프로젝트 드롭다운**에서 작업할 프로젝트를 먼저 고르세요. Agent·색인·색인삭제가 모두 이 선택 프로젝트에 적용됩니다. (드롭다운을 클릭하면 열린 프로젝트 목록이 갱신되고, 기본값은 활성 편집기의 프로젝트입니다.)
+
 1. **서버 설정**: Window > Preferences > **Ollama Assist**
    - Ollama 서버 URL: `http://192.168.45.214:11434` (← 실제 서버 IP)
    - 모델 이름: `qwen3-coder:30b` (서버 `ollama list` 와 일치)
