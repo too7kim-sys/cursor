@@ -540,7 +540,7 @@ public class OllamaAgent {
 		}
 		String updated = content.substring(0, idx) + newText + content.substring(idx + oldText.length());
 		if (!confirm.ask("Ollama Agent — 부분 수정 확인",
-				"파일: " + rel + "\n\n[변경 전]\n" + clip(oldText) + "\n\n[변경 후]\n" + clip(newText))) {
+				"파일: " + rel + "\n\n" + TextDiff.unified(oldText, newText))) {
 			return "사용자가 수정을 취소했습니다: " + rel;
 		}
 		write(f, updated);
@@ -555,8 +555,8 @@ public class OllamaAgent {
 		File f = resolve(rel);
 		String old = f.isFile() ? read(f) : "";
 		String head = old.isEmpty() ? "[새 파일 생성]\n" : "[기존 파일 전체 덮어쓰기]\n";
-		if (!confirm.ask("Ollama Agent — 파일 저장 확인",
-				head + rel + "\n\n[새 내용 미리보기]\n" + clip(content))) {
+		String detail = old.isEmpty() ? clip(content) : TextDiff.unified(old, content);
+		if (!confirm.ask("Ollama Agent — 파일 저장 확인", head + rel + "\n\n" + detail)) {
 			return "사용자가 저장을 취소했습니다: " + rel;
 		}
 		write(f, content);

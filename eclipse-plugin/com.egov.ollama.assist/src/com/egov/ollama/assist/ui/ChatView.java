@@ -141,6 +141,52 @@ public class ChatView extends ViewPart {
 				}
 			}
 		});
+
+		// 뷰 툴바: 대화 지우기 / 저장
+		org.eclipse.jface.action.IToolBarManager tb = getViewSite().getActionBars().getToolBarManager();
+		tb.add(new org.eclipse.jface.action.Action("지우기") {
+			@Override
+			public void run() {
+				if (output != null && !output.isDisposed()) {
+					output.setText("");
+				}
+			}
+		});
+		tb.add(new org.eclipse.jface.action.Action("저장") {
+			@Override
+			public void run() {
+				saveConversation();
+			}
+		});
+	}
+
+	/** 대화 내용을 파일로 저장. */
+	private void saveConversation() {
+		org.eclipse.swt.widgets.FileDialog fd = new org.eclipse.swt.widgets.FileDialog(output.getShell(), SWT.SAVE);
+		fd.setFileName("ollama-chat.md");
+		fd.setFilterExtensions(new String[] { "*.md", "*.txt", "*.*" });
+		fd.setOverwrite(true);
+		String path = fd.open();
+		if (path == null) {
+			return;
+		}
+		try {
+			java.nio.file.Files.write(new java.io.File(path).toPath(),
+					output.getText().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			append("\n💾 저장됨: " + path + "\n");
+		} catch (Exception e) {
+			append("\n[저장 실패] " + e.getMessage() + "\n");
+		}
+	}
+
+	/** 편집기에서 선택한 코드를 입력창에 코드블록으로 채우고 포커스(핸들러에서 호출). */
+	public void prefillFromEditor(String code, String lang) {
+		if (input == null || input.isDisposed()) {
+			return;
+		}
+		String fence = lang == null ? "" : lang;
+		input.setText("```" + fence + "\n" + code + "\n```\n" + input.getText());
+		input.setFocus();
 	}
 
 	private void doSend() {
@@ -377,7 +423,8 @@ public class ChatView extends ViewPart {
 				tempShell = true;
 			}
 			try {
-				result[0] = MessageDialog.openConfirm(shell, title, message);
+				DiffConfirmDialog dlg = new DiffConfirmDialog(shell, title, message);
+				result[0] = dlg.open() == org.eclipse.jface.window.Window.OK;
 			} finally {
 				if (tempShell) {
 					shell.dispose();

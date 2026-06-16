@@ -25,6 +25,10 @@
             id="com.egov.ollama.assist.refactor"
             name="Ollama: 리팩터링 제안"
             categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.sendToView"
+            name="Ollama: 선택 코드 보내기"
+            categoryId="com.egov.ollama.assist.commands"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
@@ -34,6 +38,16 @@
       <handler
             commandId="com.egov.ollama.assist.refactor"
             class="com.egov.ollama.assist.handlers.RefactorHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.sendToView"
+            class="com.egov.ollama.assist.handlers.SendToViewHandler"/>
+   </extension>
+
+   <extension point="org.eclipse.ui.bindings">
+      <key
+            sequence="M1+M3+A"
+            commandId="com.egov.ollama.assist.sendToView"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
    </extension>
 
    <extension point="org.eclipse.ui.menus">
@@ -44,6 +58,7 @@
                label="Ollama Assist">
             <command commandId="com.egov.ollama.assist.explain" style="push"/>
             <command commandId="com.egov.ollama.assist.refactor" style="push"/>
+            <command commandId="com.egov.ollama.assist.sendToView" style="push"/>
          </menu>
       </menuContribution>
    </extension>
