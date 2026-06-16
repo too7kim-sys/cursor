@@ -8,6 +8,7 @@ Bundle-Activator: com.egov.ollama.assist.Activator
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Automatic-Module-Name: com.egov.ollama.assist
 Require-Bundle: org.eclipse.ui,
+ org.eclipse.ui.ide,
  org.eclipse.core.runtime,
  org.eclipse.core.jobs,
  org.eclipse.core.resources,
