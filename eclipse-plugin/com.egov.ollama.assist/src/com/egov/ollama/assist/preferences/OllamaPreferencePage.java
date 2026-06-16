@@ -1,12 +1,21 @@
 package com.egov.ollama.assist.preferences;
 
+import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.BooleanFieldEditor;
 import org.eclipse.jface.preference.FieldEditorPreferencePage;
 import org.eclipse.jface.preference.StringFieldEditor;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPreferencePage;
 
 import com.egov.ollama.assist.Activator;
+import com.egov.ollama.assist.OllamaClient;
 
 /**
  * Window &gt; Preferences &gt; Ollama Assist 설정 화면.
@@ -40,6 +49,35 @@ public class OllamaPreferencePage extends FieldEditorPreferencePage implements I
 		addField(new BooleanFieldEditor(PreferenceConstants.P_CHAT_RAG,
 				"채팅에 코드 자동 참고(RAG) — 색인이 있으면 관련 코드를 자동 첨부",
 				getFieldEditorParent()));
+	}
+
+	@Override
+	protected Control createContents(Composite parent) {
+		Control control = super.createContents(parent);
+		Button test = new Button(getFieldEditorParent(), SWT.PUSH);
+		test.setText("연결 테스트 (저장 후)");
+		GridData gd = new GridData();
+		gd.horizontalSpan = 2;
+		test.setLayoutData(gd);
+		test.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				testConnection();
+			}
+		});
+		return control;
+	}
+
+	private void testConnection() {
+		String base = getPreferenceStore().getString(PreferenceConstants.P_BASE_URL);
+		try {
+			String r = OllamaClient.get(base, "/api/tags");
+			String shown = r.length() > 400 ? r.substring(0, 400) + "…" : r;
+			MessageDialog.openInformation(getShell(), "연결 성공", "Ollama 응답 정상:\n\n" + shown);
+		} catch (Exception ex) {
+			MessageDialog.openError(getShell(), "연결 실패",
+					"서버 URL/방화벽/모델을 확인하세요.\n\n" + ex.getMessage());
+		}
 	}
 
 	@Override

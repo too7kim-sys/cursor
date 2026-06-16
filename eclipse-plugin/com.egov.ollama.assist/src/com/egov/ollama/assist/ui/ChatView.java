@@ -256,6 +256,7 @@ public class ChatView extends ViewPart {
 				} catch (Exception ex) {
 					appendAsync("\n\n[오류] " + ex.getMessage()
 							+ "\n서버 설정(Window > Preferences > Ollama Assist)과 연결을 확인하세요.");
+					Activator.logError("채팅 요청 실패", ex);
 				} finally {
 					appendAsync("\n");
 					endBusyAsync();
@@ -307,6 +308,7 @@ public class ChatView extends ViewPart {
 					WorkspaceUtil.refresh();
 				} catch (Exception ex) {
 					appendAsync("\n\n[오류] " + ex.getMessage() + "\n");
+					Activator.logError("Agent 실행 실패", ex);
 				} finally {
 					appendAsync("\n");
 					endBusyAsync();
@@ -343,7 +345,17 @@ public class ChatView extends ViewPart {
 				try {
 					CodebaseIndex idx = new CodebaseIndex(root,
 							text -> OllamaClient.embed(base, embedModel, text));
-					int n = idx.build(cancel::get, m -> appendAsync("\n" + m));
+					// 기존 색인이 있으면 로드해 변경분만 재임베딩(증분)
+					boolean incremental = false;
+					try {
+						incremental = idx.load(new File(root, ".ollama-assist/index.json"));
+					} catch (Exception ignore) {
+						// 손상된 색인이면 전체 재색인
+					}
+					if (incremental) {
+						appendAsync("\n(기존 색인 로드 — 변경분만 갱신)\n");
+					}
+					int n = idx.build(incremental, cancel::get, m -> appendAsync("\n" + m));
 					if (n > 0) {
 						idx.save(new File(root, ".ollama-assist/index.json"));
 						index = idx;
@@ -355,6 +367,7 @@ public class ChatView extends ViewPart {
 				} catch (Exception ex) {
 					appendAsync("\n\n[색인 오류] " + ex.getMessage()
 							+ "\n임베딩 모델이 서버에 있는지(ollama list), Preferences 의 임베딩 모델명을 확인하세요.\n");
+					Activator.logError("코드 색인 실패", ex);
 				} finally {
 					endBusyAsync();
 				}

@@ -56,6 +56,33 @@ public class OllamaClient {
 		return s;
 	}
 
+	/** 단순 GET 호출(연결 테스트 등). 응답 본문 반환, 4xx/5xx 는 예외. */
+	public static String get(String baseUrl, String path) throws IOException {
+		URL url = java.net.URI.create(normalize(baseUrl) + path).toURL();
+		HttpURLConnection con = (HttpURLConnection) url.openConnection();
+		con.setRequestMethod("GET");
+		con.setConnectTimeout(8000);
+		con.setReadTimeout(15000);
+		int code = con.getResponseCode();
+		InputStream in = (code >= 200 && code < 300) ? con.getInputStream() : con.getErrorStream();
+		if (in == null) {
+			throw new IOException("HTTP " + code + " (응답 본문 없음)");
+		}
+		ByteArrayOutputStream bout = new ByteArrayOutputStream();
+		byte[] buf = new byte[8192];
+		int n;
+		try (InputStream i2 = in) {
+			while ((n = i2.read(buf)) >= 0) {
+				bout.write(buf, 0, n);
+			}
+		}
+		String resp = new String(bout.toByteArray(), StandardCharsets.UTF_8);
+		if (code >= 400) {
+			throw new IOException("HTTP " + code + ": " + resp);
+		}
+		return resp;
+	}
+
 	/**
 	 * 일반 POST(비스트리밍) 호출. 응답 본문 전체를 문자열로 반환한다.
 	 * Agent 의 도구 호출(/api/chat, stream=false) 등에 사용.

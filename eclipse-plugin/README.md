@@ -62,6 +62,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 - 설정: Window > Preferences > Ollama Assist
   - *자동 검증 명령* (비우면 Problems 사용; 명령 사용은 run 허용 필요)
   - *temperature* (코딩 권장 0.1~0.3, 기본 0.2)
+  - **[연결 테스트]** 버튼: 서버 연결 즉시 확인(저장 후). 오류는 Eclipse **Error Log** 뷰에도 기록
 
 > 💡 약한 로컬 모델일수록 **빌드 피드백 루프 + 낮은 temperature**의 효과가 큽니다. 정확한 검증 명령(`mvn -q compile` 등)을 설정하면 자가수정 성공률이 크게 올라갑니다.
 
@@ -79,6 +80,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 
 1. 뷰의 **[색인]** 버튼 → 활성 프로젝트를 임베딩 모델(기본 `nomic-embed-text`)로 색인
    - 결과는 `<프로젝트>/.ollama-assist/index.json` 에 저장되어 재시작 후에도 재사용(자동 로드)
+   - **증분 색인**: 다시 [색인]을 누르면 파일 해시를 비교해 **변경된 파일만 재임베딩**(큰 프로젝트 재색인 빠름)
    - 큰 프로젝트는 시간이 걸리며 [중지]로 취소 가능(최대 4000 청크)
 2. Agent 가 **`semantic_search`** 도구로 의미가 가까운 코드를 찾아 그 패턴대로 구현
    - 예: *"기존 게시판 CRUD와 같은 구조로 공지사항 만들어줘"* → 관련 코드 검색 후 동일 스타일 작성
@@ -136,6 +138,11 @@ eclipse-plugin/com.egov.ollama.assist/
 
 > JDK 17 이상이 필요합니다. eGov 환경이면 `eclipse.ini` 의 `-vm` 에
 > `C:\eGovFrameDev-5.0.0\bin\jdk-17\bin` 을 지정하세요.
+
+> 🔁 **버전 자동 증가(재배포 편의)**: `Bundle-Version` 이 `0.1.0.qualifier` 라, Export 시 PDE가
+> `.qualifier` 를 빌드 타임스탬프로 치환합니다(예: `0.1.0.202606160930`). 매 Export 가 **고유 버전**이
+> 되므로 dropins 의 기존 jar 만 교체하면 **`-clean` 없이** 새 버전이 로드됩니다.
+> (Export 시 Options 탭의 "Qualifier replacement" 기본값 사용)
 
 ---
 
