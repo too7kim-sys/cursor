@@ -28,7 +28,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 | `list_files` | 프로젝트 파일/폴더 목록(재귀) | - |
 | `search_text` | 전체 프로젝트 문자열 검색(파일:줄) | - |
 | `semantic_search` | **코드베이스 의미 검색(RAG)** — 키워드가 정확치 않아도 의미가 가까운 코드를 찾음(색인 필요) | - |
-| `read_file` | 파일 내용 읽기 | - |
+| `read_file` | 파일 내용 읽기(`start_line`/`end_line` 범위 지정 가능 — 큰 .xfdl 등) | - |
 | `apply_edit` | **부분 수정** — old_text→new_text 한 곳만 교체(diff 미리보기) | ✅ |
 | `create_file` | 새 파일 생성 | ✅ |
 | `write_file` | 파일 전체 덮어쓰기 | ✅ |
@@ -65,6 +65,11 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 ### ⚠️ run_command (명령 실행)
 - **기본 비활성**입니다. Window > Preferences > Ollama Assist 의 *"Agent 의 명령 실행 허용"* 을 켜야 사용됩니다.
 - 켜더라도 실행 직전 **확인 다이얼로그**로 명령을 보여주고 승인받습니다. 작업 폴더는 프로젝트 루트, 120초 타임아웃.
+
+### 정확도 강화 (프로젝트 맥락 주입)
+- **채팅 자동 RAG**: 색인이 있으면 일반 채팅에서도 질문과 관련된 코드 발췌를 **자동 첨부**해 답합니다(끄기: Preferences ▸ "채팅에 코드 자동 참고").
+- **프로젝트 규칙(AGENTS.md)**: 프로젝트 루트의 `AGENTS.md`(또는 `.ollama-assist.md`)를 채팅·Agent 시스템 프롬프트에 **자동 주입** → 사내 컨벤션/패턴을 따릅니다.
+- **`read_file` 라인 범위**: `start_line`/`end_line` 으로 큰 파일(넥사크로 `.xfdl` 등) 일부만 읽기.
 
 ### 코드베이스 학습(RAG) — 파인튜닝 없이 "프로젝트를 아는" 효과
 파인튜닝 대신 **임베딩 색인 + 의미 검색**으로 프로젝트 맥락을 활용합니다(폐쇄망 적합).

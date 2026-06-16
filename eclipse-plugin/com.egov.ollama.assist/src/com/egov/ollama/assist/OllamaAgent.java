@@ -102,6 +102,11 @@ public class OllamaAgent {
 			messages.add(msg("system", system));
 		}
 		messages.add(msg("system", agentSystemPrompt()));
+		String rules = readProjectRules(root);
+		if (rules != null) {
+			messages.add(msg("system", "이 프로젝트의 규칙/컨벤션(AGENTS.md). 반드시 준수하세요:\n" + rules));
+			log.log("\n(프로젝트 규칙 AGENTS.md 적용)\n");
+		}
 		messages.add(msg("user", userPrompt));
 		int verifyRounds = 0;
 
@@ -230,7 +235,9 @@ public class OllamaAgent {
 
 		p = new LinkedHashMap<>();
 		p.put("path", prop("string", "읽을 파일 경로"));
-		tools.add(func("read_file", "파일 전체 내용을 반환", p, Arrays.asList("path")));
+		p.put("start_line", prop("integer", "시작 줄(1부터, 선택). 큰 파일은 범위 지정 권장"));
+		p.put("end_line", prop("integer", "끝 줄(선택)"));
+		tools.add(func("read_file", "파일 내용을 반환(start_line/end_line 으로 범위 지정 가능)", p, Arrays.asList("path")));
 
 		p = new LinkedHashMap<>();
 		p.put("query", prop("string", "찾을 문자열"));
@@ -321,7 +328,7 @@ public class OllamaAgent {
 			case "list_files":
 				return listFiles(asString(args.get("path")));
 			case "read_file":
-				return readFile(asString(args.get("path")));
+				return readFile(asString(args.get("path")), asInt(args.get("start_line")), asInt(args.get("end_line")));
 			case "search_text":
 				return searchText(asString(args.get("query")));
 			case "semantic_search":
@@ -411,14 +418,30 @@ public class OllamaAgent {
 				|| name.equals(".settings") || name.equals(".metadata") || name.equals(".svn");
 	}
 
-	private String readFile(String rel) throws IOException {
+	private String readFile(String rel, int start, int end) throws IOException {
 		File f = resolve(rel);
 		if (!f.isFile()) {
 			return "파일이 없습니다: " + rel;
 		}
 		String content = read(f);
+		if (start > 0 || end > 0) {
+			String[] lines = content.split("\n", -1);
+			int s = start > 0 ? start : 1;
+			int e = end > 0 ? Math.min(end, lines.length) : lines.length;
+			if (s > lines.length) {
+				return "시작 줄(" + s + ")이 파일 길이(" + lines.length + "줄)를 초과합니다.";
+			}
+			StringBuilder sb = new StringBuilder();
+			sb.append("(").append(rel).append(" 줄 ").append(s).append("-").append(e).append(")\n");
+			for (int i = s - 1; i < e; i++) {
+				sb.append(i + 1).append(": ").append(lines[i]).append('\n');
+			}
+			String out = sb.toString();
+			return out.length() > MAX_READ ? out.substring(0, MAX_READ) + "\n...(생략)" : out;
+		}
 		if (content.length() > MAX_READ) {
-			content = content.substring(0, MAX_READ) + "\n...(파일이 길어 일부만 표시됨)";
+			content = content.substring(0, MAX_READ)
+					+ "\n...(파일이 길어 일부만 표시됨. start_line/end_line 으로 범위 지정 가능)";
 		}
 		return content;
 	}
@@ -673,6 +696,43 @@ public class OllamaAgent {
 
 	private static String asString(Object o) {
 		return o == null ? null : o.toString();
+	}
+
+	private static int asInt(Object o) {
+		if (o instanceof Number) {
+			return ((Number) o).intValue();
+		}
+		if (o instanceof String) {
+			try {
+				return (int) Double.parseDouble(((String) o).trim());
+			} catch (NumberFormatException ignore) {
+				return -1;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * 프로젝트 규칙 파일(AGENTS.md → .ollama-assist.md 순)을 읽어 반환. 없으면 null.
+	 * 채팅/에이전트 시스템 프롬프트에 주입해 사내 컨벤션을 따르게 한다.
+	 */
+	public static String readProjectRules(File root) {
+		if (root == null) {
+			return null;
+		}
+		String[] candidates = { "AGENTS.md", ".ollama-assist.md" };
+		for (String name : candidates) {
+			File f = new File(root, name);
+			if (f.isFile()) {
+				try {
+					String c = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+					return c.length() > 8000 ? c.substring(0, 8000) + "\n...(생략)" : c;
+				} catch (IOException ignore) {
+					return null;
+				}
+			}
+		}
+		return null;
 	}
 
 	private static Map<String, Object> toArgs(Object o) {

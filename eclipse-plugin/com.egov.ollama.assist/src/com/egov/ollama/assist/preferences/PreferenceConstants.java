@@ -9,6 +9,7 @@ public final class PreferenceConstants {
 	public static final String P_EMBED_MODEL = "ollamaEmbedModel";
 	public static final String P_TEMPERATURE = "ollamaTemperature";
 	public static final String P_VERIFY_CMD = "ollamaVerifyCommand";
+	public static final String P_CHAT_RAG = "ollamaChatRag";
 
 	private PreferenceConstants() {
 	}

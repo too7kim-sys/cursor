@@ -37,6 +37,9 @@ public class OllamaPreferencePage extends FieldEditorPreferencePage implements I
 				"temperature (코딩 권장 0.1~0.3):", getFieldEditorParent()));
 		addField(new StringFieldEditor(PreferenceConstants.P_VERIFY_CMD,
 				"자동 검증 명령 (예: mvn -q compile, 비우면 Problems 사용):", getFieldEditorParent()));
+		addField(new BooleanFieldEditor(PreferenceConstants.P_CHAT_RAG,
+				"채팅에 코드 자동 참고(RAG) — 색인이 있으면 관련 코드를 자동 첨부",
+				getFieldEditorParent()));
 	}
 
 	@Override

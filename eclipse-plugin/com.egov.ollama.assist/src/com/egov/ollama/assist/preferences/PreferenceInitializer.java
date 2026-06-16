@@ -21,5 +21,6 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer {
 		store.setDefault(PreferenceConstants.P_EMBED_MODEL, "nomic-embed-text");
 		store.setDefault(PreferenceConstants.P_TEMPERATURE, "0.2");
 		store.setDefault(PreferenceConstants.P_VERIFY_CMD, "");
+		store.setDefault(PreferenceConstants.P_CHAT_RAG, true);
 	}
 }

@@ -173,6 +173,9 @@ public class ChatView extends ViewPart {
 		final String model = store.getString(PreferenceConstants.P_MODEL);
 		final String system = store.getString(PreferenceConstants.P_SYSTEM);
 		final double temperature = parseTemp(store.getString(PreferenceConstants.P_TEMPERATURE));
+		final boolean chatRag = store.getBoolean(PreferenceConstants.P_CHAT_RAG);
+		final String embedModel = store.getString(PreferenceConstants.P_EMBED_MODEL);
+		final File root = selectedProjectDir();
 
 		append("\n\n🧑 나:\n" + userPrompt + "\n\n🤖 " + model + ":\n");
 		startBusy(false);
@@ -180,7 +183,30 @@ public class ChatView extends ViewPart {
 			@Override
 			protected IStatus run(IProgressMonitor monitor) {
 				try {
-					OllamaClient.chatStream(base, model, system, userPrompt, temperature, delta -> appendAsync(delta));
+					// 프로젝트 규칙(AGENTS.md) 주입
+					String effSystem = system;
+					if (root != null) {
+						String rules = OllamaAgent.readProjectRules(root);
+						if (rules != null) {
+							effSystem = effSystem + "\n\n[프로젝트 규칙(AGENTS.md)]\n" + rules;
+						}
+					}
+					// 코드 자동 참고(RAG): 색인이 있으면 관련 코드 발췌를 질문에 첨부
+					String effUser = userPrompt;
+					if (chatRag && root != null) {
+						ensureIndex(root, base, embedModel);
+						if (index != null && index.size() > 0 && root.equals(indexRoot)) {
+							try {
+								String ctx = index.search(userPrompt, 4);
+								effUser = "다음은 프로젝트에서 관련성 높은 코드 발췌입니다. 참고해 한국어로 답하세요:\n\n"
+										+ ctx + "\n[질문]\n" + userPrompt;
+								appendAsync("(관련 코드 참고됨)\n");
+							} catch (Exception ignore) {
+								// 검색 실패 시 일반 질문으로 진행
+							}
+						}
+					}
+					OllamaClient.chatStream(base, model, effSystem, effUser, temperature, delta -> appendAsync(delta));
 				} catch (Exception ex) {
 					appendAsync("\n\n[오류] " + ex.getMessage()
 							+ "\n서버 설정(Window > Preferences > Ollama Assist)과 연결을 확인하세요.");
