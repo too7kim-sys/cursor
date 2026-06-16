@@ -155,6 +155,26 @@ eclipse-plugin/com.egov.ollama.assist/
 
 ---
 
+## 대화·워크플로 기능
+
+- **연속 대화(멀티턴)**: 채팅은 이전 대화 맥락을 기억합니다("방금 그거 더 간단히" 가능). `/clear` 또는 툴바 [지우기]로 새 대화 시작.
+- **슬래시 명령** (입력창에 `/help`):
+  | 명령 | 동작 |
+  |------|------|
+  | `/test` | JUnit 테스트 생성 |
+  | `/explain` | 코드 설명 |
+  | `/review` | 코드 리뷰(버그/성능/가독성/보안) |
+  | `/doc` | 주석/Javadoc 추가 |
+  | `/egov <기능명>` | 전자정부 DAO/Service/Controller/Mapper 생성(Agent 권장) |
+  | `/xfdl <XML>` | 넥사크로/웹스퀘어 화면 분석·수정 |
+  | `/commit` | 스테이징된 변경(git diff)으로 커밋 메시지 생성 |
+  | `/clear`, `/help` | 대화 지우기 / 도움말 |
+- **편집기 우클릭 메뉴**: 코드 설명·리팩터링·**테스트 생성·주석 생성·코드 리뷰**·선택 코드 보내기
+- **빌드 자동화**: PDE Export 대신 [`build.ps1`](build.ps1) 로 컴파일→jar→dropins 배포를 한 번에(버전 타임스탬프 자동, `-clean` 불필요)
+  ```powershell
+  ./build.ps1 -EclipseHome "C:\eGovFrameDev-5.0.0\eclipse" -Jdk "C:\eGovFrameDev-5.0.0\bin\jdk-17"
+  ```
+
 ## 사용법
 
 > **워크스페이스에 프로젝트가 여러 개면**, 뷰 맨 위의 **대상 프로젝트 드롭다운**에서 작업할 프로젝트를 먼저 고르세요. Agent·색인·색인삭제가 모두 이 선택 프로젝트에 적용됩니다. (드롭다운을 클릭하면 열린 프로젝트 목록이 갱신되고, 기본값은 활성 편집기의 프로젝트입니다.)

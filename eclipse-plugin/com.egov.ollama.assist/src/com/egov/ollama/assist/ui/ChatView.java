@@ -54,6 +54,8 @@ public class ChatView extends ViewPart {
 	private volatile AtomicBoolean currentCancel;
 	private volatile CodebaseIndex index;
 	private volatile File indexRoot;
+	private final java.util.List<Object> history = new java.util.ArrayList<>();
+	private static final int MAX_HISTORY = 16;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -150,6 +152,7 @@ public class ChatView extends ViewPart {
 				if (output != null && !output.isDisposed()) {
 					output.setText("");
 				}
+				history.clear();
 			}
 		});
 		tb.add(new org.eclipse.jface.action.Action("저장") {
@@ -195,10 +198,49 @@ public class ChatView extends ViewPart {
 			return;
 		}
 		input.setText("");
+		// 슬래시 명령 처리
+		if (SlashCommands.isCommand(text)) {
+			String cmd = SlashCommands.command(text);
+			if ("/clear".equals(cmd)) {
+				if (output != null && !output.isDisposed()) {
+					output.setText("");
+				}
+				history.clear();
+				return;
+			}
+			if ("/help".equals(cmd)) {
+				append("\n" + SlashCommands.help() + "\n");
+				return;
+			}
+			if ("/commit".equals(cmd)) {
+				runCommitMessage();
+				return;
+			}
+			String expanded = SlashCommands.expand(text);
+			if (expanded != null) {
+				text = expanded;
+			}
+			// 알 수 없는 슬래시 명령은 그대로 전송
+		}
 		if (agentCheck.getSelection()) {
 			runAgent(text);
 		} else {
 			ask(text);
+		}
+	}
+
+	private static java.util.Map<String, Object> msg(String role, String content) {
+		java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+		m.put("role", role);
+		m.put("content", content);
+		return m;
+	}
+
+	private void addHistory(String user, String assistant) {
+		history.add(msg("user", user));
+		history.add(msg("assistant", assistant));
+		while (history.size() > MAX_HISTORY) {
+			history.remove(0);
 		}
 	}
 
@@ -252,11 +294,68 @@ public class ChatView extends ViewPart {
 							}
 						}
 					}
-					OllamaClient.chatStream(base, model, effSystem, effUser, temperature, delta -> appendAsync(delta));
+					// 멀티턴: 시스템 + 이전 대화 + 현재 질문
+					java.util.List<Object> messages = new java.util.ArrayList<>();
+					messages.add(msg("system", effSystem));
+					messages.addAll(history);
+					messages.add(msg("user", effUser));
+					final StringBuilder asst = new StringBuilder();
+					OllamaClient.chatStreamMessages(base, model, messages, temperature, delta -> {
+						asst.append(delta);
+						appendAsync(delta);
+					});
+					addHistory(userPrompt, asst.toString());
 				} catch (Exception ex) {
 					appendAsync("\n\n[오류] " + ex.getMessage()
 							+ "\n서버 설정(Window > Preferences > Ollama Assist)과 연결을 확인하세요.");
 					Activator.logError("채팅 요청 실패", ex);
+				} finally {
+					appendAsync("\n");
+					endBusyAsync();
+				}
+				return Status.OK_STATUS;
+			}
+		};
+		job.setUser(true);
+		job.schedule();
+	}
+
+	/** git 변경분(diff)으로 커밋 메시지를 생성. */
+	private void runCommitMessage() {
+		if (busy) {
+			return;
+		}
+		final File root = selectedProjectDir();
+		if (root == null) {
+			append("\n[안내] 활성 프로젝트를 찾을 수 없습니다.\n");
+			return;
+		}
+		IPreferenceStore store = Activator.getDefault().getPreferenceStore();
+		final String base = store.getString(PreferenceConstants.P_BASE_URL);
+		final String model = store.getString(PreferenceConstants.P_MODEL);
+		final String system = store.getString(PreferenceConstants.P_SYSTEM);
+		final double temperature = parseTemp(store.getString(PreferenceConstants.P_TEMPERATURE));
+
+		append("\n\n🧑 나:\n/commit\n\n🤖 " + model + ":\n");
+		startBusy(false);
+		Job job = new Job("Ollama 커밋 메시지") {
+			@Override
+			protected IStatus run(IProgressMonitor monitor) {
+				try {
+					String diff = GitUtil.diff(root);
+					if (diff == null || diff.trim().isEmpty()) {
+						appendAsync("\n[안내] git 변경분이 없습니다. 변경을 스테이징(git add) 후 다시 시도하세요.\n");
+						return Status.OK_STATUS;
+					}
+					if (diff.length() > 15000) {
+						diff = diff.substring(0, 15000) + "\n...(생략)";
+					}
+					String prompt = "다음 git diff 에 대한 커밋 메시지를 한국어로 작성해줘. "
+							+ "첫 줄 제목(50자 이내) + 빈 줄 + 본문(변경 이유/요약) 형식으로:\n\n" + diff;
+					OllamaClient.chatStream(base, model, system, prompt, temperature, delta -> appendAsync(delta));
+				} catch (Exception ex) {
+					appendAsync("\n\n[오류] " + ex.getMessage() + "\n");
+					Activator.logError("커밋 메시지 생성 실패", ex);
 				} finally {
 					appendAsync("\n");
 					endBusyAsync();

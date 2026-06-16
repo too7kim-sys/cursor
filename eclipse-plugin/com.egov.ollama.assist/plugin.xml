@@ -33,6 +33,18 @@
             id="com.egov.ollama.assist.complete"
             name="Ollama: 자동완성(커서 위치)"
             categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.test"
+            name="Ollama: 테스트 생성"
+            categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.doc"
+            name="Ollama: 주석 생성"
+            categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.review"
+            name="Ollama: 코드 리뷰"
+            categoryId="com.egov.ollama.assist.commands"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
@@ -48,6 +60,15 @@
       <handler
             commandId="com.egov.ollama.assist.complete"
             class="com.egov.ollama.assist.handlers.CompleteHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.test"
+            class="com.egov.ollama.assist.handlers.TestHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.doc"
+            class="com.egov.ollama.assist.handlers.DocHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.review"
+            class="com.egov.ollama.assist.handlers.ReviewHandler"/>
    </extension>
 
    <extension point="org.eclipse.ui.bindings">
@@ -69,6 +90,9 @@
                label="Ollama Assist">
             <command commandId="com.egov.ollama.assist.explain" style="push"/>
             <command commandId="com.egov.ollama.assist.refactor" style="push"/>
+            <command commandId="com.egov.ollama.assist.test" style="push"/>
+            <command commandId="com.egov.ollama.assist.doc" style="push"/>
+            <command commandId="com.egov.ollama.assist.review" style="push"/>
             <command commandId="com.egov.ollama.assist.sendToView" style="push"/>
          </menu>
       </menuContribution>

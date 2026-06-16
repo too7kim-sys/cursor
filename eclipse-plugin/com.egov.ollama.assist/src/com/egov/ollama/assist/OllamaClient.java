@@ -147,20 +147,28 @@ public class OllamaClient {
 	 */
 	public static void chatStream(String baseUrl, String model, String system, String user, double temperature,
 			ChunkConsumer onChunk) throws IOException {
-		String base = baseUrl == null ? "" : baseUrl.trim();
-		if (base.endsWith("/")) {
-			base = base.substring(0, base.length() - 1);
-		}
-		URL url = java.net.URI.create(base + "/api/chat").toURL();
-
-		StringBuilder body = new StringBuilder();
-		body.append("{\"model\":").append(JsonUtil.quote(model)).append(",\"messages\":[");
+		StringBuilder msgs = new StringBuilder("[");
 		if (system != null && !system.trim().isEmpty()) {
-			body.append("{\"role\":\"system\",\"content\":").append(JsonUtil.quote(system)).append("},");
+			msgs.append("{\"role\":\"system\",\"content\":").append(JsonUtil.quote(system)).append("},");
 		}
-		body.append("{\"role\":\"user\",\"content\":").append(JsonUtil.quote(user)).append("}],");
-		body.append("\"stream\":true,\"options\":{\"temperature\":").append(temperature).append("}}");
+		msgs.append("{\"role\":\"user\",\"content\":").append(JsonUtil.quote(user)).append("}]");
+		String body = "{\"model\":" + JsonUtil.quote(model) + ",\"messages\":" + msgs
+				+ ",\"stream\":true,\"options\":{\"temperature\":" + temperature + "}}";
+		streamChat(baseUrl, body, onChunk);
+	}
 
+	/**
+	 * 멀티턴 대화 스트리밍. messages 는 {role, content} 맵의 리스트(시스템+이전 대화+현재 질문).
+	 */
+	public static void chatStreamMessages(String baseUrl, String model, java.util.List<?> messages,
+			double temperature, ChunkConsumer onChunk) throws IOException {
+		String body = "{\"model\":" + JsonUtil.quote(model) + ",\"messages\":" + Json.write(messages)
+				+ ",\"stream\":true,\"options\":{\"temperature\":" + temperature + "}}";
+		streamChat(baseUrl, body, onChunk);
+	}
+
+	private static void streamChat(String baseUrl, String body, ChunkConsumer onChunk) throws IOException {
+		URL url = java.net.URI.create(normalize(baseUrl) + "/api/chat").toURL();
 		HttpURLConnection con = (HttpURLConnection) url.openConnection();
 		con.setRequestMethod("POST");
 		con.setRequestProperty("Content-Type", "application/json; charset=utf-8");
@@ -170,7 +178,7 @@ public class OllamaClient {
 		con.setReadTimeout(600000);
 
 		try (OutputStream os = con.getOutputStream()) {
-			os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+			os.write(body.getBytes(StandardCharsets.UTF_8));
 		}
 
 		int code = con.getResponseCode();
