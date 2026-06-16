@@ -22,5 +22,6 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer {
 		store.setDefault(PreferenceConstants.P_TEMPERATURE, "0.2");
 		store.setDefault(PreferenceConstants.P_VERIFY_CMD, "");
 		store.setDefault(PreferenceConstants.P_CHAT_RAG, true);
+		store.setDefault(PreferenceConstants.P_FIM_MODEL, "qwen2.5-coder:1.5b-base");
 	}
 }

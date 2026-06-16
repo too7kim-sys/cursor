@@ -29,6 +29,10 @@
             id="com.egov.ollama.assist.sendToView"
             name="Ollama: 선택 코드 보내기"
             categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.complete"
+            name="Ollama: 자동완성(커서 위치)"
+            categoryId="com.egov.ollama.assist.commands"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
@@ -41,12 +45,19 @@
       <handler
             commandId="com.egov.ollama.assist.sendToView"
             class="com.egov.ollama.assist.handlers.SendToViewHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.complete"
+            class="com.egov.ollama.assist.handlers.CompleteHandler"/>
    </extension>
 
    <extension point="org.eclipse.ui.bindings">
       <key
             sequence="M1+M3+A"
             commandId="com.egov.ollama.assist.sendToView"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
+      <key
+            sequence="M1+M3+SPACE"
+            commandId="com.egov.ollama.assist.complete"
             schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
    </extension>
 

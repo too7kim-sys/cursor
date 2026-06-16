@@ -56,6 +56,26 @@ public class OllamaClient {
 		return s;
 	}
 
+	/**
+	 * Fill-In-Middle 자동완성(/api/generate, suffix 사용).
+	 * prefix(커서 앞)와 suffix(커서 뒤) 사이에 들어갈 코드를 반환한다.
+	 */
+	public static String complete(String baseUrl, String model, String prefix, String suffix, double temperature)
+			throws IOException {
+		String body = "{\"model\":" + JsonUtil.quote(model)
+				+ ",\"prompt\":" + JsonUtil.quote(prefix == null ? "" : prefix)
+				+ ",\"suffix\":" + JsonUtil.quote(suffix == null ? "" : suffix)
+				+ ",\"stream\":false"
+				+ ",\"options\":{\"temperature\":" + temperature + ",\"num_predict\":256}}";
+		String resp = post(baseUrl, "/api/generate", body);
+		Object parsed = Json.parse(resp);
+		if (parsed instanceof java.util.Map) {
+			Object r = ((java.util.Map<?, ?>) parsed).get("response");
+			return r == null ? "" : r.toString();
+		}
+		return "";
+	}
+
 	/** 단순 GET 호출(연결 테스트 등). 응답 본문 반환, 4xx/5xx 는 예외. */
 	public static String get(String baseUrl, String path) throws IOException {
 		URL url = java.net.URI.create(normalize(baseUrl) + path).toURL();

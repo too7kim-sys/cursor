@@ -18,6 +18,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 | **diff 미리보기 확인** | ✅ | 파일 변경 전 색상 diff(빨강=삭제/초록=추가)로 확인 후 적용 |
 | **대화 저장/지우기** | ✅ | 뷰 툴바에서 대화 내용 저장(.md)·초기화 |
 | **선택 코드 보내기** | ✅ | 편집기에서 코드 선택 → `Ctrl+Alt+A`(또는 우클릭) → 뷰 입력창에 코드블록 채움 |
+| **AI 자동완성(FIM)** | ✅ | 커서 위치에서 `Ctrl+Alt+Space` → 앞뒤 맥락 기반 코드 자동 삽입 |
 | **자동 검증 루프** | ✅ | 수정 후 빌드/Problems 를 자동 확인 → 실패 시 모델이 자가수정(최대 3회) |
 | **낮은 temperature** | ✅ | 코딩 안정성 위해 기본 0.2 (Preferences에서 조정) |
 | 한국어 응답 강제 | ✅ | 시스템 프롬프트 기본 내장(Preferences에서 변경) |
@@ -89,9 +90,17 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 
 > 코드가 바뀌면 [색인]만 다시 누르면 됩니다(학습 불필요). 정확한 키워드 검색은 `search_text`, 모호한 의미 검색은 `semantic_search` 를 씁니다.
 
+### AI 자동완성 (FIM)
+커서 위치에서 **`Ctrl+Alt+Space`** 를 누르면, 커서 앞(prefix)·뒤(suffix) 맥락을 바탕으로 코드를 생성해 **그 자리에 삽입**합니다.
+- Ollama `/api/generate` 의 `suffix`(fill-in-middle) 사용 → 모델이 중간을 채움
+- 자동완성 모델은 Preferences ▸ *자동완성 모델(FIM)* — **base 모델 권장**(`qwen2.5-coder:1.5b-base`)
+- 빠른 응답을 위해 작은 모델 + GPU 권장. 단축키는 Window ▸ Preferences ▸ Keys 에서 변경 가능
+
+> 참고: Copilot 식 회색 ghost-text(타이핑 중 자동 표시)는 Eclipse 버전 의존성이 커서, 안정성을 위해 **단축키 호출 방식**으로 구현했습니다.
+
 ### 이번 버전에서 제외 (로드맵)
-- 인라인 자동완성(FIM) — Eclipse content-assist 깊은 연동 필요
-- 채팅(비-Agent) 자동 RAG 주입 — 현재는 Agent 의 semantic_search 도구로 제공
+- 회색 ghost-text 자동 표시(타이핑 중) — Eclipse 버전별 inline-completion API 의존
+- 채팅(비-Agent) 자동 RAG 는 구현됨(Preferences ▸ "채팅에 코드 자동 참고")
 
 > 자동완성·Agent·코드베이스 검색까지 필요하면 **VS Code + Continue** 를 병행하세요
 > (저장소의 `docs/local-dev-setup-windows.md`).
