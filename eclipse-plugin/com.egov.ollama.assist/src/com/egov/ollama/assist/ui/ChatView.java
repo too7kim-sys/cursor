@@ -47,6 +47,7 @@ import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.egov.ollama.assist.Activator;
+import com.egov.ollama.assist.AgentEditController;
 import com.egov.ollama.assist.ChangeParser;
 import com.egov.ollama.assist.CodeEdit;
 import com.egov.ollama.assist.CodebaseIndex;
@@ -104,8 +105,7 @@ public class ChatView extends ViewPart {
 	private File cachedFilesRoot;
 	private java.util.Map<String, String> cachedSymbols;
 	private File cachedSymbolsRoot;
-	private final com.egov.ollama.assist.EditHistory editHistory = new com.egov.ollama.assist.EditHistory();
-	private File historyRoot;
+	private AgentEditController editControl;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -313,6 +313,9 @@ public class ChatView extends ViewPart {
 		// @파일 자동완성
 		setupFileAutocomplete();
 
+		// 에이전트 변경 기록/되돌리기 컨트롤러(히스토리 디스크 영속화)
+		editControl = new AgentEditController(Activator.getDefault().getStateLocation().toFile());
+
 		// 세션 저장소 초기화 + 현재 세션 복원
 		sessions = new SessionStore(new File(Activator.getDefault().getStateLocation().toFile(), "sessions"));
 		sessionId = sessions.getCurrent();
@@ -490,7 +493,7 @@ public class ChatView extends ViewPart {
 		java.util.List<ChangeParser.Change> accepted = dlg.getAccepted();
 		int ok = 0;
 		for (ChangeParser.Change ch : accepted) {
-			if (writeProjectFile(root, ch.path, ch.content)) {
+			if (AgentEditController.writeFile(root, ch.path, ch.content)) {
 				ok++;
 			}
 		}
@@ -500,52 +503,48 @@ public class ChatView extends ViewPart {
 		append("\n✅ 멀티파일 변경 적용: " + ok + "/" + accepted.size() + " 파일\n");
 	}
 
+	/** 환경설정의 히스토리 보관 개수를 컨트롤러에 적용. */
+	private void applyHistoryLimit() {
+		try {
+			int max = Integer.parseInt(
+					Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.P_HISTORY_MAX).trim());
+			editControl.setMaxCheckpoints(max);
+		} catch (Exception ignore) {
+			// 기본 보관 개수 사용
+		}
+	}
+
 	/** 에이전트 실행 후 변경을 히스토리에 적재하고 요약 출력, 2개 이상이면 되돌리기 패널을 띄운다. */
-	private void reviewAgentChangesAsync(java.util.List<FileChange> raw, File root,
-			String label) {
+	private void reviewAgentChangesAsync(java.util.List<FileChange> raw, File root, String label) {
 		if (raw == null || raw.isEmpty() || root == null) {
 			return;
 		}
-		// 경로별로 합침: 최초 'before' 유지, 최종 'after' 갱신
-		java.util.LinkedHashMap<String, String[]> map = new java.util.LinkedHashMap<>();
-		for (FileChange c : raw) {
-			if (map.containsKey(c.path)) {
-				map.get(c.path)[1] = c.after;
-			} else {
-				map.put(c.path, new String[] { c.before, c.after });
-			}
-		}
-		final java.util.List<FileChange> distinct = new java.util.ArrayList<>();
-		for (java.util.Map.Entry<String, String[]> e : map.entrySet()) {
-			distinct.add(new FileChange(e.getKey(), e.getValue()[0], e.getValue()[1]));
-		}
-		ensureHistory(root); // 프로젝트별 디스크 히스토리 로드(다르면 교체)
-		editHistory.push(label, distinct); // 다단계 되돌리기용 체크포인트
-		saveHistory();
-		final int index = editHistory.size() - 1;
-		StringBuilder sb = new StringBuilder("\n📝 에이전트가 변경한 파일 " + distinct.size() + "개 (체크포인트 #"
-				+ (index + 1) + "):\n");
-		for (FileChange c : distinct) {
+		applyHistoryLimit();
+		AgentEditController.RecordResult rr = editControl.record(root, label, raw);
+		StringBuilder sb = new StringBuilder("\n📝 에이전트가 변경한 파일 " + rr.distinct.size() + "개 (체크포인트 #"
+				+ (rr.index + 1) + "):\n");
+		for (FileChange c : rr.distinct) {
 			sb.append("  • ").append(c.path).append('\n');
 		}
 		sb.append("   (잘못된 변경은 툴바 [되돌리기] 로 단계별 복구)\n");
 		appendAsync(sb.toString());
-		if (distinct.size() < 2) {
+		if (rr.distinct.size() < 2) {
 			return; // 단일 파일은 자동 패널 생략(필요 시 [되돌리기] 사용)
 		}
 		Display d = Display.getDefault();
 		if (d == null || d.isDisposed()) {
 			return;
 		}
-		d.asyncExec(() -> showRevertFrom(index));
+		d.asyncExec(() -> showRevertFrom(rr.index));
 	}
 
 	/** index 체크포인트 시점 이후를 되돌리는 패널. UI 스레드에서 호출. */
 	private void showRevertFrom(int index) {
-		if (historyRoot == null || index < 0 || index >= editHistory.size()) {
+		File root = editControl.root();
+		if (root == null || index < 0 || index >= editControl.history().size()) {
 			return;
 		}
-		java.util.Map<String, String> restore = editHistory.restoreStateFrom(index);
+		java.util.Map<String, String> restore = editControl.restoreFrom(index);
 		if (restore.isEmpty()) {
 			return;
 		}
@@ -553,20 +552,19 @@ public class ChatView extends ViewPart {
 		for (java.util.Map.Entry<String, String> e : restore.entrySet()) {
 			reverts.add(new ChangeParser.Change(e.getKey(), e.getValue())); // content=복원할 내용
 		}
-		ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), reverts, historyRoot,
+		ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), reverts, root,
 				"되돌리기 — 체크포인트 #" + (index + 1) + " 이후 복구(" + reverts.size() + "파일)", true);
 		if (dlg.open() != org.eclipse.jface.window.Window.OK) {
 			return;
 		}
 		int n = 0;
 		for (ChangeParser.Change ch : dlg.getAccepted()) {
-			if (writeProjectFile(historyRoot, ch.path, ch.content)) {
+			if (AgentEditController.writeFile(root, ch.path, ch.content)) {
 				n++;
 			}
 		}
 		if (n > 0) {
-			editHistory.truncateTo(index); // 되돌린 시점 이후 기록 제거
-			saveHistory();
+			editControl.truncateAndSave(index); // 되돌린 시점 이후 기록 제거 + 저장
 			WorkspaceUtil.refresh();
 			cachedFiles = null;
 			cachedSymbols = null;
@@ -576,9 +574,10 @@ public class ChatView extends ViewPart {
 
 	/** 툴바 [되돌리기]: 체크포인트를 골라 그 시점 이후를 되돌린다(다단계). */
 	private void revertLastAgentChanges() {
-		ensureHistory(selectedProjectDir()); // 재시작 후에도 디스크 히스토리 사용
-		int size = editHistory.size();
-		if (size == 0 || historyRoot == null) {
+		applyHistoryLimit();
+		editControl.ensure(selectedProjectDir()); // 재시작 후에도 디스크 히스토리 사용
+		final int size = editControl.history().size();
+		if (size == 0 || editControl.root() == null) {
 			append("\n[안내] 되돌릴 에이전트 변경 기록이 없습니다.\n");
 			return;
 		}
@@ -592,7 +591,7 @@ public class ChatView extends ViewPart {
 					@Override
 					public String getText(Object o) {
 						int i = (Integer) o;
-						EditHistory.Checkpoint cp = editHistory.get(i);
+						com.egov.ollama.assist.EditHistory.Checkpoint cp = editControl.history().get(i);
 						return "#" + (i + 1) + "  " + cp.fileCount() + "파일  "
 								+ (cp.label == null ? "" : cp.label.replaceAll("\\s+", " ").trim());
 					}
@@ -602,77 +601,6 @@ public class ChatView extends ViewPart {
 		sel.setElements(indices);
 		if (sel.open() == org.eclipse.jface.window.Window.OK && sel.getFirstResult() instanceof Integer) {
 			showRevertFrom((Integer) sel.getFirstResult());
-		}
-	}
-
-	/** 프로젝트별 되돌리기 히스토리 파일(상태 폴더). */
-	private File historyFile(File root) {
-		try {
-			String key = Integer.toHexString(root.getAbsolutePath().hashCode());
-			return new File(Activator.getDefault().getStateLocation().toFile(), "history_" + key + ".json");
-		} catch (Exception e) {
-			return null;
-		}
-	}
-
-	/** root 에 해당하는 히스토리를 디스크에서 로드(이미 같은 root 면 그대로). */
-	private void ensureHistory(File root) {
-		if (root == null || root.equals(historyRoot)) {
-			return;
-		}
-		historyRoot = root;
-		try {
-			int max = Integer.parseInt(
-					Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.P_HISTORY_MAX).trim());
-			editHistory.setMaxCheckpoints(max);
-		} catch (Exception ignore) {
-			// 기본 보관 개수 사용
-		}
-		File f = historyFile(root);
-		try {
-			if (f != null && f.isFile()) {
-				editHistory.loadJson(new String(java.nio.file.Files.readAllBytes(f.toPath()),
-						java.nio.charset.StandardCharsets.UTF_8));
-			} else {
-				editHistory.loadJson("");
-			}
-		} catch (Exception e) {
-			editHistory.loadJson("");
-			Activator.logError("되돌리기 히스토리 로드 실패", e);
-		}
-	}
-
-	private void saveHistory() {
-		if (historyRoot == null) {
-			return;
-		}
-		File f = historyFile(historyRoot);
-		if (f == null) {
-			return;
-		}
-		try {
-			java.nio.file.Files.write(f.toPath(),
-					editHistory.toJson().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-		} catch (Exception e) {
-			Activator.logError("되돌리기 히스토리 저장 실패", e);
-		}
-	}
-
-	private boolean writeProjectFile(File root, String rel, String content) {
-		try {
-			File f = new File(root, rel);
-			if (!f.getCanonicalPath().startsWith(root.getCanonicalPath())) {
-				return false; // 프로젝트 밖 경로 차단
-			}
-			File parent = f.getParentFile();
-			if (parent != null) {
-				parent.mkdirs();
-			}
-			java.nio.file.Files.write(f.toPath(), content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-			return true;
-		} catch (Exception e) {
-			Activator.logError("파일 쓰기 실패: " + rel, e);
-			return false;
 		}
 	}
 

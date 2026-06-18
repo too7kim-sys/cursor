@@ -4,7 +4,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $src  = Join-Path $here "com.egov.ollama.assist\src"
 $out  = Join-Path ([System.IO.Path]::GetTempPath()) ("ollama-tests-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $out | Out-Null
-$pure = @("JsonUtil","Json","MarkdownScanner","CodeEdit","Mentions","FileProposals","SessionStore","SymbolIndex","Problems","ChangeParser","GhostText","EditMatch","VerifyReport","EditHistory","FileChange") |
+$pure = @("JsonUtil","Json","MarkdownScanner","CodeEdit","Mentions","FileProposals","SessionStore","SymbolIndex","Problems","ChangeParser","GhostText","EditMatch","VerifyReport","EditHistory","FileChange","AgentEditController") |
   ForEach-Object { Join-Path $src "com\egov\ollama\assist\$_.java" }
 & javac -Xlint:all -d $out @pure
 & javac -cp $out -d $out (Join-Path $here "tests\TestRunner.java")

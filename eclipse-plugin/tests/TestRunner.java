@@ -23,6 +23,7 @@ public class TestRunner {
 		editMatch();
 		verifyReport();
 		editHistory();
+		agentEditController();
 		System.out.println("\n=== PASS=" + pass + " FAIL=" + fail + " ===");
 		if (fail > 0) System.exit(1);
 	}
@@ -250,5 +251,29 @@ public class TestRunner {
 		h.loadJson("");
 		h.loadJson(null);
 		return h.size()==0;
+	}
+
+	static void agentEditController() throws Exception {
+		List<FileChange> raw = new ArrayList<>();
+		raw.add(new FileChange("A.java","a0","a1"));
+		raw.add(new FileChange("B.java","","b1"));
+		raw.add(new FileChange("A.java","a1","a2"));
+		List<FileChange> m = AgentEditController.merge(raw);
+		ck("aec: merge size", m.size()==2);
+		FileChange a = m.get(0);
+		ck("aec: merge first-before/last-after", a.path.equals("A.java") && a.before.equals("a0") && a.after.equals("a2"));
+		File dir = File.createTempFile("aec","d"); dir.delete(); dir.mkdirs();
+		File proj = File.createTempFile("proj","d"); proj.delete(); proj.mkdirs();
+		AgentEditController c = new AgentEditController(dir);
+		AgentEditController.RecordResult r = c.record(proj, "run1", raw);
+		ck("aec: record index", r.index==0 && r.distinct.size()==2);
+		ck("aec: restore before", "a0".equals(c.restoreFrom(0).get("A.java")));
+		AgentEditController c2 = new AgentEditController(dir);
+		c2.ensure(proj);
+		ck("aec: persisted load", c2.history().size()==1 && "a0".equals(c2.restoreFrom(0).get("A.java")));
+		ck("aec: writeFile ok", AgentEditController.writeFile(proj, "sub/x.txt", "hi"));
+		ck("aec: writeFile escape blocked", !AgentEditController.writeFile(proj, "../escape.txt", "no"));
+		c.truncateAndSave(0);
+		ck("aec: truncate", c.history().size()==0);
 	}
 }
