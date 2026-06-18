@@ -19,6 +19,7 @@ javac -Xlint:all -d "$OUT" \
   "$SRC/com/egov/ollama/assist/GhostText.java" \
   "$SRC/com/egov/ollama/assist/EditMatch.java" \
   "$SRC/com/egov/ollama/assist/VerifyReport.java" \
-  "$SRC/com/egov/ollama/assist/EditHistory.java"
+  "$SRC/com/egov/ollama/assist/EditHistory.java" \
+  "$SRC/com/egov/ollama/assist/FileChange.java"
 javac -cp "$OUT" -d "$OUT" "$HERE/tests/TestRunner.java"
 java -cp "$OUT" TestRunner

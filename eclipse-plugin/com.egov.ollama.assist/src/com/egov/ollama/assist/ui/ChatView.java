@@ -51,6 +51,7 @@ import com.egov.ollama.assist.ChangeParser;
 import com.egov.ollama.assist.CodeEdit;
 import com.egov.ollama.assist.CodebaseIndex;
 import com.egov.ollama.assist.EclipseEnvironment;
+import com.egov.ollama.assist.FileChange;
 import com.egov.ollama.assist.FileProposals;
 import com.egov.ollama.assist.GitUtil;
 import com.egov.ollama.assist.MarkdownScanner;
@@ -500,28 +501,32 @@ public class ChatView extends ViewPart {
 	}
 
 	/** 에이전트 실행 후 변경을 히스토리에 적재하고 요약 출력, 2개 이상이면 되돌리기 패널을 띄운다. */
-	private void reviewAgentChangesAsync(java.util.List<String[]> raw, File root, String label) {
+	private void reviewAgentChangesAsync(java.util.List<FileChange> raw, File root,
+			String label) {
 		if (raw == null || raw.isEmpty() || root == null) {
 			return;
 		}
 		// 경로별로 합침: 최초 'before' 유지, 최종 'after' 갱신
 		java.util.LinkedHashMap<String, String[]> map = new java.util.LinkedHashMap<>();
-		for (String[] c : raw) {
-			if (map.containsKey(c[0])) {
-				map.get(c[0])[2] = c[2];
+		for (FileChange c : raw) {
+			if (map.containsKey(c.path)) {
+				map.get(c.path)[1] = c.after;
 			} else {
-				map.put(c[0], new String[] { c[0], c[1], c[2] });
+				map.put(c.path, new String[] { c.before, c.after });
 			}
 		}
-		final java.util.List<String[]> distinct = new java.util.ArrayList<>(map.values());
+		final java.util.List<FileChange> distinct = new java.util.ArrayList<>();
+		for (java.util.Map.Entry<String, String[]> e : map.entrySet()) {
+			distinct.add(new FileChange(e.getKey(), e.getValue()[0], e.getValue()[1]));
+		}
 		ensureHistory(root); // 프로젝트별 디스크 히스토리 로드(다르면 교체)
 		editHistory.push(label, distinct); // 다단계 되돌리기용 체크포인트
 		saveHistory();
 		final int index = editHistory.size() - 1;
 		StringBuilder sb = new StringBuilder("\n📝 에이전트가 변경한 파일 " + distinct.size() + "개 (체크포인트 #"
 				+ (index + 1) + "):\n");
-		for (String[] c : distinct) {
-			sb.append("  • ").append(c[0]).append('\n');
+		for (FileChange c : distinct) {
+			sb.append("  • ").append(c.path).append('\n');
 		}
 		sb.append("   (잘못된 변경은 툴바 [되돌리기] 로 단계별 복구)\n");
 		appendAsync(sb.toString());

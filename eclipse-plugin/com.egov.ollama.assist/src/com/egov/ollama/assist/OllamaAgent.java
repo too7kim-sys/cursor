@@ -93,8 +93,8 @@ public class OllamaAgent {
 	private final double temperature;
 	private final String verifyCommand;
 	private boolean edited;
-	/** 이번 실행에서 적용한 변경 기록: 각 항목 {상대경로, 변경 전 내용, 변경 후 내용}. */
-	private final java.util.List<String[]> appliedChanges = new java.util.ArrayList<>();
+	/** 이번 실행에서 적용한 변경 기록. */
+	private final java.util.List<FileChange> appliedChanges = new java.util.ArrayList<>();
 
 	public OllamaAgent(String base, String model, String system, File root, boolean enableRun,
 			double temperature, String verifyCommand,
@@ -342,8 +342,8 @@ public class OllamaAgent {
 
 	// ===================== 도구 실행 =====================
 
-	/** 이번 실행에서 적용된 변경 목록(각 {상대경로, 변경 전, 변경 후}). 검토/되돌리기용. */
-	public java.util.List<String[]> getAppliedChanges() {
+	/** 이번 실행에서 적용된 변경 목록. 검토/되돌리기용. */
+	public java.util.List<FileChange> getAppliedChanges() {
 		return appliedChanges;
 	}
 
@@ -541,7 +541,7 @@ public class OllamaAgent {
 		}
 		write(f, content);
 		edited = true;
-		appliedChanges.add(new String[] { rel, "", content });
+		appliedChanges.add(new FileChange(rel, "", content));
 		return "파일 생성 완료: " + rel + " (" + content.length() + " chars)";
 	}
 
@@ -571,7 +571,7 @@ public class OllamaAgent {
 			}
 			write(f, updated);
 			edited = true;
-			appliedChanges.add(new String[] { rel, content, updated });
+			appliedChanges.add(new FileChange(rel, content, updated));
 			return "부분 수정 완료: " + rel + " (" + count + "곳 교체)";
 		}
 
@@ -591,7 +591,7 @@ public class OllamaAgent {
 		}
 		write(f, updated);
 		edited = true;
-		appliedChanges.add(new String[] { rel, content, updated });
+		appliedChanges.add(new FileChange(rel, content, updated));
 		return "부분 수정 완료: " + rel + ("exact".equals(m.mode) ? "" : " (보정 매칭)");
 	}
 
@@ -608,7 +608,7 @@ public class OllamaAgent {
 		}
 		write(f, content);
 		edited = true;
-		appliedChanges.add(new String[] { rel, old, content });
+		appliedChanges.add(new FileChange(rel, old, content));
 		return "저장 완료: " + rel + " (" + content.length() + " chars)";
 	}
 
@@ -684,8 +684,8 @@ public class OllamaAgent {
 	/** 이번 실행에서 변경한 파일들의 파일명(검증 오류 우선순위 힌트). */
 	private java.util.Set<String> changedHints() {
 		java.util.Set<String> out = new java.util.LinkedHashSet<>();
-		for (String[] c : appliedChanges) {
-			String rel = c[0];
+		for (FileChange c : appliedChanges) {
+			String rel = c.path;
 			int slash = Math.max(rel.lastIndexOf('/'), rel.lastIndexOf('\\'));
 			out.add(slash >= 0 ? rel.substring(slash + 1) : rel);
 		}

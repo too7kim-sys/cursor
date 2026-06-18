@@ -14,14 +14,14 @@ public final class EditHistory {
 	public static final class Checkpoint {
 		public final String label;
 		public final long time;
-		/** 각 {경로, 변경 전, 변경 후}. */
-		public final List<String[]> edits;
+		/** 이 실행에서 바뀐 파일들. */
+		public final List<FileChange> edits;
 
-		Checkpoint(String label, List<String[]> edits) {
+		Checkpoint(String label, List<FileChange> edits) {
 			this(label, edits, System.currentTimeMillis());
 		}
 
-		Checkpoint(String label, List<String[]> edits, long time) {
+		Checkpoint(String label, List<FileChange> edits, long time) {
 			this.label = label == null ? "" : label;
 			this.time = time;
 			this.edits = edits;
@@ -62,7 +62,7 @@ public final class EditHistory {
 		return cps.get(i);
 	}
 
-	public void push(String label, List<String[]> edits) {
+	public void push(String label, List<FileChange> edits) {
 		if (edits != null && !edits.isEmpty()) {
 			cps.add(new Checkpoint(label, edits));
 			prune(System.currentTimeMillis());
@@ -91,8 +91,8 @@ public final class EditHistory {
 	public long totalChars() {
 		long n = 0;
 		for (Checkpoint cp : cps) {
-			for (String[] e : cp.edits) {
-				n += (e[1] == null ? 0 : e[1].length()) + (e[2] == null ? 0 : e[2].length());
+			for (FileChange e : cp.edits) {
+				n += e.before.length() + e.after.length();
 			}
 		}
 		return n;
@@ -105,8 +105,8 @@ public final class EditHistory {
 	public Map<String, String> restoreStateFrom(int index) {
 		Map<String, String> m = new LinkedHashMap<>();
 		for (int i = Math.max(0, index); i < cps.size(); i++) {
-			for (String[] e : cps.get(i).edits) {
-				m.putIfAbsent(e[0], e[1]);
+			for (FileChange e : cps.get(i).edits) {
+				m.putIfAbsent(e.path, e.before);
 			}
 		}
 		return m;
@@ -127,11 +127,11 @@ public final class EditHistory {
 			m.put("label", cp.label);
 			m.put("time", cp.time);
 			List<Object> es = new ArrayList<>();
-			for (String[] e : cp.edits) {
+			for (FileChange e : cp.edits) {
 				List<Object> t = new ArrayList<>();
-				t.add(e[0]);
-				t.add(e[1]);
-				t.add(e[2]);
+				t.add(e.path);
+				t.add(e.before);
+				t.add(e.after);
 				es.add(t);
 			}
 			m.put("edits", es);
@@ -155,14 +155,14 @@ public final class EditHistory {
 				continue;
 			}
 			Map<?, ?> m = (Map<?, ?>) o;
-			List<String[]> edits = new ArrayList<>();
+			List<FileChange> edits = new ArrayList<>();
 			Object editsO = m.get("edits");
 			if (editsO instanceof List) {
 				for (Object eo : (List<?>) editsO) {
 					if (eo instanceof List) {
 						List<?> t = (List<?>) eo;
 						if (t.size() >= 3) {
-							edits.add(new String[] { str(t.get(0)), str(t.get(1)), str(t.get(2)) });
+							edits.add(new FileChange(str(t.get(0)), str(t.get(1)), str(t.get(2))));
 						}
 					}
 				}

@@ -193,8 +193,8 @@ public class TestRunner {
 
 	static void editHistory() {
 		EditHistory h = new EditHistory();
-		List<String[]> r1 = new ArrayList<>(); r1.add(new String[]{"A.java","a0","a1"});
-		List<String[]> r2 = new ArrayList<>(); r2.add(new String[]{"A.java","a1","a2"}); r2.add(new String[]{"B.java","","b1"});
+		List<FileChange> r1 = new ArrayList<>(); r1.add(new FileChange("A.java","a0","a1"));
+		List<FileChange> r2 = new ArrayList<>(); r2.add(new FileChange("A.java","a1","a2")); r2.add(new FileChange("B.java","","b1"));
 		h.push("r1", r1);
 		h.push("r2", r2);
 		ck("eh: size", h.size()==2);
@@ -209,7 +209,7 @@ public class TestRunner {
 		ck("eh: empty not pushed", h.size()==1);
 		// JSON 영속화 라운드트립
 		EditHistory h2 = new EditHistory();
-		List<String[]> e1 = new ArrayList<>(); e1.add(new String[]{"X.java","x0","x1"}); e1.add(new String[]{"Y.java","","y1"});
+		List<FileChange> e1 = new ArrayList<>(); e1.add(new FileChange("X.java","x0","x1")); e1.add(new FileChange("Y.java","","y1"));
 		h2.push("작업1", e1);
 		EditHistory h3 = new EditHistory();
 		h3.loadJson(h2.toJson());
@@ -227,7 +227,7 @@ public class TestRunner {
 		// 나이 상한: 오래된 체크포인트는 prune(now)로 제거(최소 1 유지)
 		EditHistory ha = new EditHistory();
 		ha.setLimits(100, 9999999, 1000); // 1초
-		List<String[]> old = new ArrayList<>(); old.add(new String[]{"Old.java","o0","o1"});
+		List<FileChange> old = new ArrayList<>(); old.add(new FileChange("Old.java","o0","o1"));
 		ha.push("oldcp", old);
 		ha.push("newcp", one("New.java"));
 		ha.prune(System.currentTimeMillis() + 10000); // 10초 후 시점 → 둘 다 오래됨이지만 최소 1 유지
@@ -239,9 +239,9 @@ public class TestRunner {
 		ck("eh: totalChars positive", hb.totalChars() >= 0);
 	}
 
-	static List<String[]> one(String path) {
-		List<String[]> l = new ArrayList<>();
-		l.add(new String[]{path, "before-"+path, "after-"+path});
+	static List<FileChange> one(String path) {
+		List<FileChange> l = new ArrayList<>();
+		l.add(new FileChange(path, "before-"+path, "after-"+path));
 		return l;
 	}
 
