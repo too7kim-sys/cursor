@@ -17,6 +17,7 @@ import org.eclipse.ui.texteditor.ITextEditor;
 import com.egov.ollama.assist.Activator;
 import com.egov.ollama.assist.CodeEdit;
 import com.egov.ollama.assist.OllamaClient;
+import com.egov.ollama.assist.Problems;
 import com.egov.ollama.assist.preferences.PreferenceConstants;
 
 /** 오류 수정(Problems 퀵픽스) 공통 로직: 모델 호출 → diff 미리보기 → 제자리 적용. */
@@ -90,10 +91,32 @@ public final class FixSupport {
 
 	public static String describe(IMarker m) {
 		int line = m.getAttribute(IMarker.LINE_NUMBER, -1);
-		int sev = m.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO);
-		String kind = sev == IMarker.SEVERITY_ERROR ? "오류" : sev == IMarker.SEVERITY_WARNING ? "경고" : "정보";
+		String kind = severityLabel(m.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO));
 		String msg = m.getAttribute(IMarker.MESSAGE, "");
 		return "줄 " + line + " [" + kind + "] " + msg;
+	}
+
+	/** 파일의 모든 문제 마커를 순수 모델(Problems.Item) 목록으로 수집. */
+	public static java.util.List<Problems.Item> allProblems(IFile file) {
+		java.util.List<Problems.Item> out = new java.util.ArrayList<>();
+		try {
+			IMarker[] markers = file.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_ZERO);
+			for (IMarker m : markers) {
+				int line = m.getAttribute(IMarker.LINE_NUMBER, -1);
+				if (line < 0) {
+					continue;
+				}
+				out.add(new Problems.Item(line, severityLabel(m.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO)),
+						m.getAttribute(IMarker.MESSAGE, "")));
+			}
+		} catch (Exception e) {
+			Activator.logError("마커 수집 실패", e);
+		}
+		return out;
+	}
+
+	private static String severityLabel(int sev) {
+		return sev == IMarker.SEVERITY_ERROR ? "오류" : sev == IMarker.SEVERITY_WARNING ? "경고" : "정보";
 	}
 
 	public static String fileExtension(String name) {

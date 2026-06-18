@@ -17,6 +17,7 @@ public class TestRunner {
 		fileProposals();
 		sessionStore();
 		symbols();
+		problems();
 		System.out.println("\n=== PASS=" + pass + " FAIL=" + fail + " ===");
 		if (fail > 0) System.exit(1);
 	}
@@ -106,5 +107,17 @@ public class TestRunner {
 		ck("sym: defLine class", SymbolIndex.defLine(java,"Foo")==0);
 		ck("sym: defLine method", SymbolIndex.defLine(java,"bar")==1);
 		ck("sym: snippet", SymbolIndex.snippet(java,1,0).contains("bar"));
+	}
+
+	static void problems() {
+		List<Problems.Item> items = new ArrayList<>();
+		items.add(new Problems.Item(5, "오류", "';' expected"));
+		items.add(new Problems.Item(2, "경고", "unused import"));
+		items.add(new Problems.Item(5, "오류", "';' expected")); // 중복
+		String f = Problems.format(items);
+		ck("pb: sorted by line", f.indexOf("줄 2") < f.indexOf("줄 5"));
+		ck("pb: dedupe", f.split("\n").length == 2);
+		ck("pb: errorCount", Problems.errorCount(items) == 2);
+		ck("pb: empty", Problems.format(new ArrayList<>()).isEmpty());
 	}
 }

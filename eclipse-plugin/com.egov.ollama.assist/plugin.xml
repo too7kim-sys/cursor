@@ -61,6 +61,10 @@
             id="com.egov.ollama.assist.fixMarker"
             name="Ollama: AI로 고치기"
             categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.fixFile"
+            name="Ollama: 현재 파일 오류 일괄 수정"
+            categoryId="com.egov.ollama.assist.commands"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
@@ -97,6 +101,9 @@
       <handler
             commandId="com.egov.ollama.assist.fixMarker"
             class="com.egov.ollama.assist.handlers.FixMarkerHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.fixFile"
+            class="com.egov.ollama.assist.handlers.FixFileHandler"/>
    </extension>
 
    <extension point="org.eclipse.ui.bindings">
@@ -128,6 +135,7 @@
             <command commandId="com.egov.ollama.assist.ghostComplete" style="push"/>
             <command commandId="com.egov.ollama.assist.complete" style="push"/>
             <command commandId="com.egov.ollama.assist.fixError" style="push"/>
+            <command commandId="com.egov.ollama.assist.fixFile" style="push"/>
             <separator name="com.egov.ollama.assist.sep1" visible="true"/>
             <command commandId="com.egov.ollama.assist.explain" style="push"/>
             <command commandId="com.egov.ollama.assist.refactor" style="push"/>
