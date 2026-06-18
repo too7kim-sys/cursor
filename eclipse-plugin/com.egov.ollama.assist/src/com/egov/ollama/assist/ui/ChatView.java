@@ -26,8 +26,10 @@ import org.eclipse.ui.part.ViewPart;
 import com.egov.ollama.assist.Activator;
 import com.egov.ollama.assist.CodebaseIndex;
 import com.egov.ollama.assist.EclipseEnvironment;
+import com.egov.ollama.assist.GitUtil;
 import com.egov.ollama.assist.OllamaAgent;
 import com.egov.ollama.assist.OllamaClient;
+import com.egov.ollama.assist.SlashCommands;
 import com.egov.ollama.assist.WorkspaceUtil;
 import com.egov.ollama.assist.preferences.PreferenceConstants;
 
