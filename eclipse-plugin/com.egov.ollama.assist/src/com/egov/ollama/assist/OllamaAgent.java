@@ -26,7 +26,13 @@ public class OllamaAgent {
 
 	/** 진행/응답 출력 콜백 */
 	public interface Logger {
+		/** 모델의 실제 답변 내용을 출력. */
 		void log(String text);
+
+		/** 단계별 진행·상태(도구 호출, 결과 요약, 진행 안내 등)를 출력. 기본은 log 와 동일. */
+		default void progress(String text) {
+			log(text);
+		}
 	}
 
 	/** 변경/명령 확인 콜백. true 면 진행. */
@@ -105,14 +111,14 @@ public class OllamaAgent {
 		String rules = readProjectRules(root);
 		if (rules != null) {
 			messages.add(msg("system", "이 프로젝트의 규칙/컨벤션(AGENTS.md). 반드시 준수하세요:\n" + rules));
-			log.log("\n(프로젝트 규칙 AGENTS.md 적용)\n");
+			log.progress("\n(프로젝트 규칙 AGENTS.md 적용)\n");
 		}
 		messages.add(msg("user", userPrompt));
 		int verifyRounds = 0;
 
 		for (int iter = 0; iter < MAX_ITER; iter++) {
 			if (isCancelled()) {
-				log.log("\n[중지됨]\n");
+				log.progress("\n[중지됨]\n");
 				return;
 			}
 			String body = "{\"model\":" + JsonUtil.quote(model)
@@ -121,21 +127,21 @@ public class OllamaAgent {
 					+ ",\"stream\":false"
 					+ ",\"options\":{\"temperature\":" + temperature + "}}";
 
-			log.log("\n(모델 응답 생성 중… #" + (iter + 1) + ")\n");
+			log.progress("\n(모델 응답 생성 중… #" + (iter + 1) + ")\n");
 			String resp = OllamaClient.post(base, "/api/chat", body);
 			Object parsed = Json.parse(resp);
 			if (!(parsed instanceof Map)) {
-				log.log("\n[오류] 예상치 못한 응답 형식\n");
+				log.progress("\n[오류] 예상치 못한 응답 형식\n");
 				return;
 			}
 			Map<?, ?> rootMap = (Map<?, ?>) parsed;
 			if (rootMap.get("error") != null) {
-				log.log("\n[오류] " + rootMap.get("error") + "\n");
+				log.progress("\n[오류] " + rootMap.get("error") + "\n");
 				return;
 			}
 			Object msgO = rootMap.get("message");
 			if (!(msgO instanceof Map)) {
-				log.log("\n[오류] 응답에 message 가 없습니다\n");
+				log.progress("\n[오류] 응답에 message 가 없습니다\n");
 				return;
 			}
 			Map<String, Object> message = castMap(msgO);
@@ -151,25 +157,25 @@ public class OllamaAgent {
 					String verdict = autoVerify();
 					if (verdict != null) {
 						verifyRounds++;
-						log.log("\n🔁 자동 검증 실패 — 수정 재시도 (" + verifyRounds + "/" + MAX_VERIFY + ")\n");
+						log.progress("\n🔁 자동 검증 실패 — 수정 재시도 (" + verifyRounds + "/" + MAX_VERIFY + ")\n");
 						edited = false;
 						messages.add(msg("user",
 								"자동 검증에서 문제가 발견되었습니다. 아래 내용을 분석해 코드를 수정하세요. "
 										+ "수정 후에는 추가 설명만 하세요.\n\n" + verdict));
 						continue;
 					}
-					log.log("\n✅ 자동 검증 통과\n");
+					log.progress("\n✅ 자동 검증 통과\n");
 				}
 				if (content != null && !content.isEmpty()) {
 					log.log(content);
 				}
-				log.log("\n\n[완료]\n");
+				log.progress("\n\n[완료]\n");
 				return;
 			}
 
 			for (Object tco : toolCalls) {
 				if (isCancelled()) {
-					log.log("\n[중지됨]\n");
+					log.progress("\n[중지됨]\n");
 					return;
 				}
 				if (!(tco instanceof Map)) {
@@ -184,9 +190,9 @@ public class OllamaAgent {
 				String name = asString(fn.get("name"));
 				Map<String, Object> args = toArgs(fn.get("arguments"));
 
-				log.log("\n🔧 " + name + "(" + briefArgs(args) + ")\n");
+				log.progress("\n🔧 " + name + "(" + briefArgs(args) + ")\n");
 				String result = executeTool(name, args);
-				log.log("   ↳ " + firstLine(result) + "\n");
+				log.progress("   ↳ " + firstLine(result) + "\n");
 
 				Map<String, Object> toolMsg = new LinkedHashMap<>();
 				toolMsg.put("role", "tool");
@@ -195,7 +201,7 @@ public class OllamaAgent {
 				messages.add(toolMsg);
 			}
 		}
-		log.log("\n[안내] 최대 반복 횟수(" + MAX_ITER + ")에 도달해 중단했습니다.\n");
+		log.progress("\n[안내] 최대 반복 횟수(" + MAX_ITER + ")에 도달해 중단했습니다.\n");
 	}
 
 	private boolean isCancelled() {
@@ -612,7 +618,7 @@ public class OllamaAgent {
 	private String autoVerify() {
 		if (verifyCommand != null && !verifyCommand.trim().isEmpty() && enableRun) {
 			try {
-				log.log("\n🔎 검증 실행: " + verifyCommand + "\n");
+				log.progress("\n🔎 검증 실행: " + verifyCommand + "\n");
 				String out = execShell(verifyCommand);
 				return out.startsWith("exit=0") ? null : "검증 명령 실패:\n" + out;
 			} catch (Exception e) {
@@ -620,7 +626,7 @@ public class OllamaAgent {
 			}
 		}
 		if (env != null) {
-			log.log("\n🔎 Problems 검증 중…\n");
+			log.progress("\n🔎 Problems 검증 중…\n");
 			String probs = env.getProblems();
 			if (probs == null || probs.startsWith("오류 0개")) {
 				return null;

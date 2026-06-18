@@ -67,10 +67,13 @@ public class ChatView extends ViewPart {
 	private final java.util.List<Object> history = new java.util.ArrayList<>();
 	private static final int MAX_HISTORY = 16;
 	private boolean dark;
+	private boolean showProgress = true;
 	private Color codeBgLight;
 	private Color codeBgDark;
 	private Color darkBg;
 	private Color darkFg;
+	private Color dimLight;
+	private Color dimDark;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -195,12 +198,23 @@ public class ChatView extends ViewPart {
 		};
 		darkAction.setToolTipText("다크 테마 켜기/끄기");
 		tb.add(darkAction);
+		org.eclipse.jface.action.Action hideProgressAction = new org.eclipse.jface.action.Action("진행감추기",
+				org.eclipse.jface.action.IAction.AS_CHECK_BOX) {
+			@Override
+			public void run() {
+				showProgress = !isChecked();
+			}
+		};
+		hideProgressAction.setToolTipText("단계별 진행 과정(도구 호출 등)을 숨기고 답변만 표시");
+		tb.add(hideProgressAction);
 
 		// 구문강조용 색상 생성 + 정리
 		Color disp1 = new Color(parent.getDisplay(), 240, 240, 240);
 		Color disp2 = new Color(parent.getDisplay(), 55, 55, 60);
 		darkBg = new Color(parent.getDisplay(), 30, 30, 34);
 		darkFg = new Color(parent.getDisplay(), 220, 220, 220);
+		dimLight = new Color(parent.getDisplay(), 140, 140, 140);
+		dimDark = new Color(parent.getDisplay(), 120, 120, 128);
 		codeBgLight = disp1;
 		codeBgDark = disp2;
 		// Eclipse CSS 테마 엔진이 우리 색을 흰색으로 덮어쓰지 않도록 위젯 CSS 적용을 해제
@@ -211,6 +225,8 @@ public class ChatView extends ViewPart {
 			codeBgDark.dispose();
 			darkBg.dispose();
 			darkFg.dispose();
+			dimLight.dispose();
+			dimDark.dispose();
 		});
 	}
 
@@ -225,6 +241,7 @@ public class ChatView extends ViewPart {
 		String text = output.getText();
 		Font mono = JFaceResources.getTextFont();
 		Color cbg = dark ? codeBgDark : codeBgLight;
+		Color dim = dark ? dimDark : dimLight;
 		for (MarkdownScanner.Span sp : MarkdownScanner.scan(text)) {
 			int len = Math.min(sp.length, text.length() - sp.start);
 			if (len <= 0) {
@@ -241,6 +258,9 @@ public class ChatView extends ViewPart {
 			case HEADER:
 			case BOLD:
 				r.fontStyle = SWT.BOLD;
+				break;
+			case PROGRESS:
+				r.foreground = dim; // 진행/상태 줄은 흐리게 → 답변이 도드라지게
 				break;
 			default:
 				break;
@@ -522,7 +542,19 @@ public class ChatView extends ViewPart {
 							&& root.equals(indexRoot)) ? (q -> index.search(q, 5)) : null;
 					OllamaAgent agent = new OllamaAgent(base, model, system, root, enableRun,
 							temperature, verifyCmd,
-							text -> appendAsync(text),
+							new OllamaAgent.Logger() {
+								@Override
+								public void log(String text) {
+									appendAsync(text);
+								}
+
+								@Override
+								public void progress(String text) {
+									if (showProgress) {
+										appendAsync(text);
+									}
+								}
+							},
 							(title, message) -> confirm(title, message),
 							cancel::get,
 							new EclipseEnvironment(),

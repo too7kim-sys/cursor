@@ -10,7 +10,7 @@ import java.util.List;
 public final class MarkdownScanner {
 
 	public enum Kind {
-		CODE, BOLD, HEADER
+		CODE, BOLD, HEADER, PROGRESS
 	}
 
 	public static final class Span {
@@ -50,7 +50,9 @@ public final class MarkdownScanner {
 					spans.add(new Span(codeStart, lineEnd - codeStart, Kind.CODE));
 				}
 			} else if (!inCode) {
-				if (line.startsWith("# ") || line.startsWith("## ") || line.startsWith("### ")) {
+				if (isProgressLine(line)) {
+					spans.add(new Span(lineStart, line.length(), Kind.PROGRESS));
+				} else if (line.startsWith("# ") || line.startsWith("## ") || line.startsWith("### ")) {
 					spans.add(new Span(lineStart, line.length(), Kind.HEADER));
 				} else {
 					scanBold(line, lineStart, spans);
@@ -62,6 +64,26 @@ public final class MarkdownScanner {
 			spans.add(new Span(codeStart, text.length() - codeStart, Kind.CODE)); // 닫히지 않은 코드블록
 		}
 		return spans;
+	}
+
+	/** 에이전트/뷰가 출력하는 단계별 진행·상태 줄(도구 호출, 결과, 진행 안내 등)인지 판정. */
+	private static final String[] PROGRESS_PREFIXES = { "🔧", "↳", "🔁", "✅", "🔎", "🤖", "📋", "(모델 응답",
+			"(프로젝트 규칙", "(관련 코드", "(기존 색인", "(저장된 코드", "(저장된 색인", "[완료]", "[중지됨]", "[안내]", "[오류]", "[색인" };
+
+	public static boolean isProgressLine(String line) {
+		if (line == null) {
+			return false;
+		}
+		String t = line.trim();
+		if (t.isEmpty()) {
+			return false;
+		}
+		for (String p : PROGRESS_PREFIXES) {
+			if (t.startsWith(p)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static void scanBold(String line, int base, List<Span> spans) {
