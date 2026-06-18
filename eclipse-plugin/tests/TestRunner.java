@@ -19,6 +19,7 @@ public class TestRunner {
 		symbols();
 		problems();
 		changeParser();
+		ghostText();
 		System.out.println("\n=== PASS=" + pass + " FAIL=" + fail + " ===");
 		if (fail > 0) System.exit(1);
 	}
@@ -92,6 +93,9 @@ public class TestRunner {
 		ck("ss: history", s2.history.size()==1);
 		st.setCurrent(id); ck("ss: current", id.equals(st.getCurrent()));
 		ck("ss: list", st.list().size()==1);
+		ck("ss: search by name", st.search("내 대화").size()==1);
+		ck("ss: search by content", st.search("int x").size()==1);
+		ck("ss: search miss", st.search("없는단어zz").isEmpty());
 		st.delete(id); ck("ss: delete", st.load(id)==null && st.list().isEmpty());
 	}
 
@@ -132,5 +136,14 @@ public class TestRunner {
 		ck("cp: multiple", c5.size()==2 && c5.get(1).path.equals("y/B.java"));
 		ck("cp: lang only ignored", ChangeParser.parse("```python\nprint(1)\n```").isEmpty());
 		ck("cp: prose clears", ChangeParser.parse("src/Z.java\n이건 설명\n```\nz\n```").isEmpty());
+	}
+
+	static void ghostText() {
+		ck("gt: end of text", GhostText.atLineEnd("abc", 3));
+		ck("gt: before newline", GhostText.atLineEnd("ab\ncd", 2));
+		ck("gt: mid line false", !GhostText.atLineEnd("ab\ncd", 1));
+		ck("gt: trailing ws then nl", GhostText.atLineEnd("ab  \nx", 2));
+		ck("gt: empty true", GhostText.atLineEnd("", 0));
+		ck("gt: null false", !GhostText.atLineEnd(null, 0));
 	}
 }

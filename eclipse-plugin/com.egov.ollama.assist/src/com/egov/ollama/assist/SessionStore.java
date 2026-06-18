@@ -121,6 +121,28 @@ public final class SessionStore {
 		return out;
 	}
 
+	/** 이름 또는 대화 내용에 query 가 포함된 세션 목록(대소문자 무시). 빈 query 면 전체. */
+	public List<Info> search(String query) {
+		if (query == null || query.trim().isEmpty()) {
+			return list();
+		}
+		String q = query.toLowerCase();
+		List<Info> out = new ArrayList<>();
+		for (Info info : list()) {
+			boolean match = info.name != null && info.name.toLowerCase().contains(q);
+			if (!match) {
+				Session s = load(info.id);
+				if (s != null && s.transcript != null && s.transcript.toLowerCase().contains(q)) {
+					match = true;
+				}
+			}
+			if (match) {
+				out.add(info);
+			}
+		}
+		return out;
+	}
+
 	/** 현재 세션 id 포인터 읽기/쓰기. */
 	public String getCurrent() {
 		try {

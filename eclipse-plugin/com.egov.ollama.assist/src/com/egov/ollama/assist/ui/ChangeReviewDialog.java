@@ -31,21 +31,30 @@ public class ChangeReviewDialog extends Dialog {
 
 	private final List<ChangeParser.Change> changes;
 	private final File root;
+	private final String title;
+	private final boolean defaultChecked;
 	private final List<ChangeParser.Change> accepted = new ArrayList<>();
 	private Table table;
 	private StyledText diffArea;
 
 	public ChangeReviewDialog(Shell parentShell, List<ChangeParser.Change> changes, File root) {
+		this(parentShell, changes, root, "멀티파일 변경 적용 — " + changes.size() + "개 파일", true);
+	}
+
+	public ChangeReviewDialog(Shell parentShell, List<ChangeParser.Change> changes, File root, String title,
+			boolean defaultChecked) {
 		super(parentShell);
 		this.changes = changes;
 		this.root = root;
+		this.title = title;
+		this.defaultChecked = defaultChecked;
 		setShellStyle(getShellStyle() | SWT.RESIZE);
 	}
 
 	@Override
 	protected void configureShell(Shell newShell) {
 		super.configureShell(newShell);
-		newShell.setText("멀티파일 변경 적용 — " + changes.size() + "개 파일");
+		newShell.setText(title);
 	}
 
 	@Override
@@ -62,7 +71,7 @@ public class ChangeReviewDialog extends Dialog {
 			TableItem it = new TableItem(table, SWT.NONE);
 			boolean exists = new File(root, ch.path).isFile();
 			it.setText(ch.path + "   — " + (exists ? "덮어쓰기" : "신규"));
-			it.setChecked(true);
+			it.setChecked(defaultChecked);
 			it.setData(ch);
 		}
 		table.addSelectionListener(new SelectionAdapter() {

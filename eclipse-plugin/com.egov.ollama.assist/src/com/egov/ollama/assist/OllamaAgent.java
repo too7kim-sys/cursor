@@ -49,6 +49,10 @@ public class OllamaAgent {
 
 		String getConsole();
 
+		/** run_command 등의 출력을 Eclipse Console 패널로 보낸다(기본 무동작). */
+		default void console(String text) {
+		}
+
 		String listServers();
 
 		String startServer(String name);
@@ -83,6 +87,8 @@ public class OllamaAgent {
 	private final double temperature;
 	private final String verifyCommand;
 	private boolean edited;
+	/** 이번 실행에서 적용한 변경 기록: 각 항목 {상대경로, 변경 전 내용, 변경 후 내용}. */
+	private final java.util.List<String[]> appliedChanges = new java.util.ArrayList<>();
 
 	public OllamaAgent(String base, String model, String system, File root, boolean enableRun,
 			double temperature, String verifyCommand,
@@ -328,6 +334,11 @@ public class OllamaAgent {
 
 	// ===================== 도구 실행 =====================
 
+	/** 이번 실행에서 적용된 변경 목록(각 {상대경로, 변경 전, 변경 후}). 검토/되돌리기용. */
+	public java.util.List<String[]> getAppliedChanges() {
+		return appliedChanges;
+	}
+
 	private String executeTool(String name, Map<String, Object> args) {
 		try {
 			switch (name == null ? "" : name) {
@@ -522,6 +533,7 @@ public class OllamaAgent {
 		}
 		write(f, content);
 		edited = true;
+		appliedChanges.add(new String[] { rel, "", content });
 		return "파일 생성 완료: " + rel + " (" + content.length() + " chars)";
 	}
 
@@ -551,6 +563,7 @@ public class OllamaAgent {
 		}
 		write(f, updated);
 		edited = true;
+		appliedChanges.add(new String[] { rel, content, updated });
 		return "부분 수정 완료: " + rel;
 	}
 
@@ -567,6 +580,7 @@ public class OllamaAgent {
 		}
 		write(f, content);
 		edited = true;
+		appliedChanges.add(new String[] { rel, old, content });
 		return "저장 완료: " + rel + " (" + content.length() + " chars)";
 	}
 
@@ -608,6 +622,9 @@ public class OllamaAgent {
 			out.append("[시간 초과 ").append(CMD_TIMEOUT_SEC).append("초로 종료]");
 		}
 		int exit = done ? proc.exitValue() : -1;
+		if (env != null) {
+			env.console("$ " + command + "\n" + out + "[exit=" + exit + "]\n\n");
+		}
 		return "exit=" + exit + "\n" + out;
 	}
 

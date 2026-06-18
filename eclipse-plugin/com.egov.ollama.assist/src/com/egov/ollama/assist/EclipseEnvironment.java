@@ -93,6 +93,11 @@ public class EclipseEnvironment implements OllamaAgent.Environment {
 	}
 
 	@Override
+	public void console(String text) {
+		ConsoleUtil.print(text);
+	}
+
+	@Override
 	public String listServers() {
 		try {
 			return ServerControl.list();

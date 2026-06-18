@@ -42,6 +42,9 @@ public final class GhostCompletions {
 		if (st == null) {
 			return;
 		}
+		if (!GhostText.atLineEnd(all, offset)) {
+			return; // 줄 끝에서만 표시(줄 중간 오버레이로 인한 혼란 방지)
+		}
 		final String prefix = all.substring(Math.max(0, offset - CONTEXT), offset);
 		final String suffix = all.substring(offset, Math.min(all.length(), offset + CONTEXT));
 

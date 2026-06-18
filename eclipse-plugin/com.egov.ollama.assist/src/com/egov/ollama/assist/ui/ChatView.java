@@ -481,6 +481,56 @@ public class ChatView extends ViewPart {
 		append("\n✅ 멀티파일 변경 적용: " + ok + "/" + accepted.size() + " 파일\n");
 	}
 
+	/** 에이전트 실행 후 변경 파일 요약을 출력하고, 2개 이상이면 되돌리기 검토 패널을 띄운다. */
+	private void reviewAgentChangesAsync(java.util.List<String[]> raw, File root) {
+		if (raw == null || raw.isEmpty() || root == null) {
+			return;
+		}
+		// 경로별로 합침: 최초 'before' 유지, 최종 'after' 갱신
+		java.util.LinkedHashMap<String, String[]> map = new java.util.LinkedHashMap<>();
+		for (String[] c : raw) {
+			if (map.containsKey(c[0])) {
+				map.get(c[0])[2] = c[2];
+			} else {
+				map.put(c[0], new String[] { c[0], c[1], c[2] });
+			}
+		}
+		final java.util.List<String[]> distinct = new java.util.ArrayList<>(map.values());
+		StringBuilder sb = new StringBuilder("\n📝 에이전트가 변경한 파일 " + distinct.size() + "개:\n");
+		for (String[] c : distinct) {
+			sb.append("  • ").append(c[0]).append('\n');
+		}
+		appendAsync(sb.toString());
+		if (distinct.size() < 2) {
+			return; // 단일 파일은 패널 생략(이미 변경 시 확인함)
+		}
+		Display d = Display.getDefault();
+		if (d == null || d.isDisposed()) {
+			return;
+		}
+		d.asyncExec(() -> {
+			java.util.List<ChangeParser.Change> reverts = new java.util.ArrayList<>();
+			for (String[] c : distinct) {
+				reverts.add(new ChangeParser.Change(c[0], c[1])); // content=변경 전(되돌림 대상)
+			}
+			ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), reverts, root,
+					"에이전트 변경 검토 — 되돌릴 파일 선택(" + distinct.size() + ")", false);
+			if (dlg.open() != org.eclipse.jface.window.Window.OK) {
+				return;
+			}
+			int n = 0;
+			for (ChangeParser.Change ch : dlg.getAccepted()) {
+				if (writeProjectFile(root, ch.path, ch.content)) {
+					n++;
+				}
+			}
+			if (n > 0) {
+				WorkspaceUtil.refresh();
+				append("\n↩️ 되돌린 파일: " + n + "개\n");
+			}
+		});
+	}
+
 	private boolean writeProjectFile(File root, String rel, String content) {
 		try {
 			File f = new File(root, rel);
@@ -637,7 +687,53 @@ public class ChatView extends ViewPart {
 		new MenuItem(menu, SWT.SEPARATOR);
 		addPush(menu, "새 세션…", this::newSessionPrompt);
 		addPush(menu, "이름 변경…", this::renameSessionPrompt);
+		addPush(menu, "세션 검색…", this::searchSessionPrompt);
+		addPush(menu, "현재 세션 내보내기(.md)", this::exportSession);
 		addPush(menu, "현재 세션 삭제", this::deleteCurrentSession);
+	}
+
+	private void searchSessionPrompt() {
+		InputDialog dlg = new InputDialog(output.getShell(), "세션 검색", "이름/내용 검색어:", "", null);
+		if (dlg.open() != org.eclipse.jface.window.Window.OK) {
+			return;
+		}
+		java.util.List<SessionStore.Info> hits = sessions.search(dlg.getValue());
+		if (hits.isEmpty()) {
+			MessageDialog.openInformation(output.getShell(), "세션 검색", "일치하는 세션이 없습니다.");
+			return;
+		}
+		org.eclipse.ui.dialogs.ElementListSelectionDialog sel = new org.eclipse.ui.dialogs.ElementListSelectionDialog(
+				output.getShell(), new org.eclipse.jface.viewers.LabelProvider() {
+					@Override
+					public String getText(Object e) {
+						return ((SessionStore.Info) e).name;
+					}
+				});
+		sel.setTitle("세션 검색 결과");
+		sel.setMessage("전환할 세션을 선택하세요(" + hits.size() + "건):");
+		sel.setElements(hits.toArray());
+		if (sel.open() == org.eclipse.jface.window.Window.OK && sel.getFirstResult() instanceof SessionStore.Info) {
+			switchSession(((SessionStore.Info) sel.getFirstResult()).id);
+		}
+	}
+
+	private void exportSession() {
+		org.eclipse.swt.widgets.FileDialog fd = new org.eclipse.swt.widgets.FileDialog(output.getShell(), SWT.SAVE);
+		fd.setFileName((sessionName == null ? "session" : sessionName.replaceAll("[\\\\/:*?\"<>|]", "_")) + ".md");
+		fd.setFilterExtensions(new String[] { "*.md", "*.txt", "*.*" });
+		fd.setOverwrite(true);
+		String path = fd.open();
+		if (path == null) {
+			return;
+		}
+		try {
+			String body = "# " + sessionName + "\n\n" + (output == null ? "" : output.getText());
+			java.nio.file.Files.write(new java.io.File(path).toPath(),
+					body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			append("\n💾 세션 내보내기: " + path + "\n");
+		} catch (Exception e) {
+			append("\n[내보내기 실패] " + e.getMessage() + "\n");
+		}
 	}
 
 	private void addPush(Menu menu, String text, Runnable action) {
@@ -1087,6 +1183,7 @@ public class ChatView extends ViewPart {
 							retriever);
 					agent.run(userPrompt);
 					WorkspaceUtil.refresh();
+					reviewAgentChangesAsync(agent.getAppliedChanges(), root);
 				} catch (Exception ex) {
 					appendAsync("\n\n[오류] " + ex.getMessage() + "\n");
 					Activator.logError("Agent 실행 실패", ex);

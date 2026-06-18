@@ -101,6 +101,8 @@ public final class GhostTextController {
 		st.redraw();
 	}
 
+	private static final int MAX_LINES = 12;
+
 	private void paint(PaintEvent e) {
 		if (!active || st.isDisposed()) {
 			return;
@@ -108,14 +110,23 @@ public final class GhostTextController {
 		try {
 			Point loc = st.getLocationAtOffset(offset);
 			GC gc = e.gc;
-			gc.setForeground(ghostColor);
 			gc.setFont(st.getFont());
 			int lineH = st.getLineHeight();
+			// 미리보기임을 분명히 하도록 옅은 배경을 깔고(오버레이) 그 위에 회색 텍스트를 그린다.
+			Color overlayBg = st.getDisplay().getSystemColor(SWT.COLOR_INFO_BACKGROUND);
 			String[] lines = suggestion.split("\n", -1);
-			for (int i = 0; i < lines.length; i++) {
+			int n = Math.min(lines.length, MAX_LINES);
+			for (int i = 0; i < n; i++) {
+				String s = (i == MAX_LINES - 1 && lines.length > MAX_LINES) ? lines[i] + " …" : lines[i];
 				int x = (i == 0) ? loc.x : st.getLeftMargin();
 				int y = loc.y + i * lineH;
-				gc.drawText(lines[i], x, y, true); // 배경 투명
+				if (!s.isEmpty()) {
+					Point ext = gc.textExtent(s);
+					gc.setBackground(overlayBg);
+					gc.fillRectangle(x, y, ext.x + 2, lineH);
+				}
+				gc.setForeground(ghostColor);
+				gc.drawText(s, x, y, true); // 배경 투명(이미 깔아둔 overlayBg 위)
 			}
 		} catch (Exception ex) {
 			// 페인트 중 오류는 무시(레이아웃 변경 등)
