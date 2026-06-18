@@ -608,6 +608,13 @@ public class ChatView extends ViewPart {
 			return;
 		}
 		historyRoot = root;
+		try {
+			int max = Integer.parseInt(
+					Activator.getDefault().getPreferenceStore().getString(PreferenceConstants.P_HISTORY_MAX).trim());
+			editHistory.setMaxCheckpoints(max);
+		} catch (Exception ignore) {
+			// 기본 보관 개수 사용
+		}
 		File f = historyFile(root);
 		try {
 			if (f != null && f.isFile()) {

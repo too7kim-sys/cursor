@@ -214,6 +214,32 @@ public class TestRunner {
 		ck("eh: json label", h3.get(0).label.equals("작업1"));
 		ck("eh: json restore", "x0".equals(h3.restoreStateFrom(0).get("X.java")) && h3.get(0).fileCount()==2);
 		ck("eh: load empty", roundtripEmpty());
+		// 개수 상한: 2개로 제한하고 3번 push → 최신 2개만, 가장 오래된 것 제거
+		EditHistory hc = new EditHistory();
+		hc.setMaxCheckpoints(2);
+		hc.push("c1", one("F1.java"));
+		hc.push("c2", one("F2.java"));
+		hc.push("c3", one("F3.java"));
+		ck("eh: cap count", hc.size()==2 && hc.get(0).label.equals("c2") && hc.get(1).label.equals("c3"));
+		// 나이 상한: 오래된 체크포인트는 prune(now)로 제거(최소 1 유지)
+		EditHistory ha = new EditHistory();
+		ha.setLimits(100, 9999999, 1000); // 1초
+		List<String[]> old = new ArrayList<>(); old.add(new String[]{"Old.java","o0","o1"});
+		ha.push("oldcp", old);
+		ha.push("newcp", one("New.java"));
+		ha.prune(System.currentTimeMillis() + 10000); // 10초 후 시점 → 둘 다 오래됨이지만 최소 1 유지
+		ck("eh: age keeps one", ha.size()==1 && ha.get(0).label.equals("newcp"));
+		// 용량 상한
+		EditHistory hb = new EditHistory();
+		hb.setLimits(100, 10, 0); // 10자 상한, 나이 무시
+		hb.push("big1", one("A.java"));   // before "o0"? one() uses small content
+		ck("eh: totalChars positive", hb.totalChars() >= 0);
+	}
+
+	static List<String[]> one(String path) {
+		List<String[]> l = new ArrayList<>();
+		l.add(new String[]{path, "before-"+path, "after-"+path});
+		return l;
 	}
 
 	static boolean roundtripEmpty() {

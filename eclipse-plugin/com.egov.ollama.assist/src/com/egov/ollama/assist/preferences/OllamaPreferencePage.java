@@ -50,6 +50,8 @@ public class OllamaPreferencePage extends FieldEditorPreferencePage implements I
 				"자동 검증 명령 (예: mvn -q compile, 비우면 Problems 사용):", getFieldEditorParent()));
 		addField(new StringFieldEditor(PreferenceConstants.P_VERIFY_ROUNDS,
 				"자동 검증 재시도 횟수 (0=끔, 권장 1~3):", getFieldEditorParent()));
+		addField(new StringFieldEditor(PreferenceConstants.P_HISTORY_MAX,
+				"되돌리기 히스토리 보관 개수 (오래된 것부터 자동 정리):", getFieldEditorParent()));
 		addField(new BooleanFieldEditor(PreferenceConstants.P_CHAT_RAG,
 				"채팅에 코드 자동 참고(RAG) — 색인이 있으면 관련 코드를 자동 첨부",
 				getFieldEditorParent()));

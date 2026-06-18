@@ -14,6 +14,7 @@ public final class PreferenceConstants {
 	public static final String P_AUTO_GHOST = "ollamaAutoGhost";
 	public static final String P_INLINE_PREVIEW = "ollamaInlinePreview";
 	public static final String P_VERIFY_ROUNDS = "ollamaVerifyRounds";
+	public static final String P_HISTORY_MAX = "ollamaHistoryMax";
 
 	private PreferenceConstants() {
 	}
