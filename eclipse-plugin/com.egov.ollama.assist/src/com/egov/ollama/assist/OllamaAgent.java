@@ -130,7 +130,7 @@ public class OllamaAgent {
 
 		for (int iter = 0; iter < MAX_ITER; iter++) {
 			if (isCancelled()) {
-				log.progress("\n[중지됨]\n");
+				log.log("\n[중지됨]\n");
 				return;
 			}
 			String body = "{\"model\":" + JsonUtil.quote(model)
@@ -143,17 +143,17 @@ public class OllamaAgent {
 			String resp = OllamaClient.post(base, "/api/chat", body);
 			Object parsed = Json.parse(resp);
 			if (!(parsed instanceof Map)) {
-				log.progress("\n[오류] 예상치 못한 응답 형식\n");
+				log.log("\n[오류] 예상치 못한 응답 형식\n");
 				return;
 			}
 			Map<?, ?> rootMap = (Map<?, ?>) parsed;
 			if (rootMap.get("error") != null) {
-				log.progress("\n[오류] " + rootMap.get("error") + "\n");
+				log.log("\n[오류] " + rootMap.get("error") + "\n");
 				return;
 			}
 			Object msgO = rootMap.get("message");
 			if (!(msgO instanceof Map)) {
-				log.progress("\n[오류] 응답에 message 가 없습니다\n");
+				log.log("\n[오류] 응답에 message 가 없습니다\n");
 				return;
 			}
 			Map<String, Object> message = castMap(msgO);
@@ -187,7 +187,7 @@ public class OllamaAgent {
 
 			for (Object tco : toolCalls) {
 				if (isCancelled()) {
-					log.progress("\n[중지됨]\n");
+					log.log("\n[중지됨]\n");
 					return;
 				}
 				if (!(tco instanceof Map)) {
@@ -213,7 +213,7 @@ public class OllamaAgent {
 				messages.add(toolMsg);
 			}
 		}
-		log.progress("\n[안내] 최대 반복 횟수(" + MAX_ITER + ")에 도달해 중단했습니다.\n");
+		log.log("\n[안내] 최대 반복 횟수(" + MAX_ITER + ")에 도달해 중단했습니다.\n");
 	}
 
 	private boolean isCancelled() {
@@ -581,6 +581,9 @@ public class OllamaAgent {
 		}
 		if ("exact".equals(m.mode) && EditMatch.hasDuplicateExact(content, oldText)) {
 			return "old_text 가 여러 곳과 일치합니다. 더 길고 유일한 범위를 지정하거나 all=true 로 일괄 교체하세요.";
+		}
+		if (!"exact".equals(m.mode) && m.ambiguous) {
+			return "보정 매칭(공백/들여쓰기 무시)이 여러 곳과 일치합니다. old_text 를 더 길고 유일하게 지정하세요.";
 		}
 		String matched = content.substring(m.start, m.end);
 		String updated = content.substring(0, m.start) + newText + content.substring(m.end);

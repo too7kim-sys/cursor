@@ -114,6 +114,9 @@ public final class EditHistory {
 
 	/** index 이상(그 체크포인트 포함)을 히스토리에서 제거. */
 	public void truncateTo(int index) {
+		if (index < 0) {
+			return; // 잘못된 인덱스로 전체 삭제되는 것 방지
+		}
 		while (cps.size() > index && cps.size() > 0) {
 			cps.remove(cps.size() - 1);
 		}

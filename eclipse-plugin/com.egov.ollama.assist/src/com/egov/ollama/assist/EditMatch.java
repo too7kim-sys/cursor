@@ -14,11 +14,14 @@ public final class EditMatch {
 		public final int end;
 		/** exact=정확 일치, 그 외는 보정 매칭(공백/들여쓰기 무시). */
 		public final String mode;
+		/** 보정 매칭이 여러 곳과 일치하는지(애매). */
+		public final boolean ambiguous;
 
-		public Result(int start, int end, String mode) {
+		public Result(int start, int end, String mode, boolean ambiguous) {
 			this.start = start;
 			this.end = end;
 			this.mode = mode;
+			this.ambiguous = ambiguous;
 		}
 	}
 
@@ -31,7 +34,7 @@ public final class EditMatch {
 		}
 		int i = content.indexOf(oldText);
 		if (i >= 0) {
-			return new Result(i, i + oldText.length(), "exact");
+			return new Result(i, i + oldText.length(), "exact", false);
 		}
 		Result r = lineMatch(content, oldText, false);
 		if (r != null) {
@@ -75,6 +78,9 @@ public final class EditMatch {
 		if (m == 0) {
 			return null;
 		}
+		int firstStart = -1;
+		int firstEnd = -1;
+		boolean dup = false;
 		for (int ws = 0; ws + m <= lines.size(); ws++) {
 			boolean ok = true;
 			for (int k = 0; k < m; k++) {
@@ -86,12 +92,19 @@ public final class EditMatch {
 				}
 			}
 			if (ok) {
-				int start = lines.get(ws)[0];
-				int end = lines.get(ws + m - 1)[1];
-				return new Result(start, end, fullTrim ? "indent" : "trailing-ws");
+				if (firstStart < 0) {
+					firstStart = lines.get(ws)[0];
+					firstEnd = lines.get(ws + m - 1)[1];
+				} else {
+					dup = true; // 두 번째 일치 → 애매
+					break;
+				}
 			}
 		}
-		return null;
+		if (firstStart < 0) {
+			return null;
+		}
+		return new Result(firstStart, firstEnd, fullTrim ? "indent" : "trailing-ws", dup);
 	}
 
 	/** 각 줄의 [시작, 줄바꿈 직전] 오프셋. */

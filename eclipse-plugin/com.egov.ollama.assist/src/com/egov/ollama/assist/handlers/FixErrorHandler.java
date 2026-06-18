@@ -52,7 +52,8 @@ public class FixErrorHandler extends AbstractHandler {
 				startLine = endLine = doc.getLineOfOffset(offset);
 			} else {
 				startLine = doc.getLineOfOffset(offset);
-				endLine = doc.getLineOfOffset(offset + length);
+				// 선택이 줄 경계(다음 줄 첫 오프셋)에서 끝나면 다음 줄을 포함하지 않도록 보정
+				endLine = doc.getLineOfOffset(offset + Math.max(0, length - 1));
 			}
 		} catch (BadLocationException e) {
 			return null;

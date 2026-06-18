@@ -47,7 +47,7 @@ public class FixMarkerHandler extends AbstractHandler {
 		}
 
 		int line = marker.getAttribute(IMarker.LINE_NUMBER, -1); // 1-based
-		if (line < 0) {
+		if (line <= 0) {
 			MessageDialog.openInformation(shell, "Ollama 오류 수정", "줄 정보가 없는 마커는 수정할 수 없습니다.");
 			return null;
 		}

@@ -133,7 +133,10 @@ public final class AgentEditController {
 		}
 		try {
 			File f = new File(root, rel);
-			if (!f.getCanonicalPath().startsWith(root.getCanonicalPath())) {
+			String rootPath = root.getCanonicalPath();
+			String fp = f.getCanonicalPath();
+			// "/root" 가 "/root-evil" 의 접두어가 되는 우회를 막기 위해 구분자까지 확인
+			if (!fp.equals(rootPath) && !fp.startsWith(rootPath + File.separator)) {
 				return false;
 			}
 			File parent = f.getParentFile();

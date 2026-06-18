@@ -30,9 +30,16 @@ public class AutoGhostManager implements IStartup {
 	private ITextEditor pending;
 	private final Runnable fire = () -> {
 		ITextEditor te = pending;
-		if (te != null && enabled()) {
-			GhostCompletions.trigger(te);
+		if (te == null || !enabled()) {
+			return;
 		}
+		// 편집기가 이미 닫혔으면(StyledText 폐기) 트리거하지 않고 참조를 해제한다.
+		StyledText st = GhostCompletions.styledTextOf(te);
+		if (st == null || st.isDisposed()) {
+			pending = null;
+			return;
+		}
+		GhostCompletions.trigger(te);
 	};
 
 	@Override
@@ -88,7 +95,10 @@ public class AutoGhostManager implements IStartup {
 
 			@Override
 			public void partClosed(IWorkbenchPartReference ref) {
-				// 무시
+				// 닫힌 편집기를 가리키던 예약을 해제해 stale 참조/누수와 닫힌 편집기 트리거를 막는다.
+				if (ref != null && ref.getPart(false) == pending) {
+					pending = null;
+				}
 			}
 
 			@Override

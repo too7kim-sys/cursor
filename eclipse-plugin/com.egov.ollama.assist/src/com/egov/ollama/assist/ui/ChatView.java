@@ -574,6 +574,10 @@ public class ChatView extends ViewPart {
 
 	/** 툴바 [되돌리기]: 체크포인트를 골라 그 시점 이후를 되돌린다(다단계). */
 	private void revertLastAgentChanges() {
+		if (busy) {
+			append("\n[안내] 작업이 진행 중입니다. 완료 후 되돌려 주세요.\n");
+			return;
+		}
 		applyHistoryLimit();
 		editControl.ensure(selectedProjectDir()); // 재시작 후에도 디스크 히스토리 사용
 		final int size = editControl.history().size();
@@ -672,8 +676,10 @@ public class ChatView extends ViewPart {
 			if (!f.isFile()) {
 				return null;
 			}
-			if (!f.getCanonicalPath().startsWith(root.getCanonicalPath())) {
-				return null; // 프로젝트 밖 경로 차단
+			String rootPath = root.getCanonicalPath();
+			String fp = f.getCanonicalPath();
+			if (!fp.equals(rootPath) && !fp.startsWith(rootPath + File.separator)) {
+				return null; // 프로젝트 밖 경로 차단("/root" 가 "/root-x" 접두어가 되는 우회 방지)
 			}
 			String s = new String(java.nio.file.Files.readAllBytes(f.toPath()),
 					java.nio.charset.StandardCharsets.UTF_8);
@@ -1025,6 +1031,7 @@ public class ChatView extends ViewPart {
 					output.setText("");
 				}
 				history.clear();
+				saveSession(); // 비운 상태를 즉시 디스크에 반영
 				return;
 			}
 			if ("/help".equals(cmd)) {

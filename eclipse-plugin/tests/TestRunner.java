@@ -170,6 +170,13 @@ public class TestRunner {
 		ck("em: no dup", !EditMatch.hasDuplicateExact("a x", "x"));
 		ck("em: countExact", EditMatch.countExact("a x a x a", "x") == 2);
 		ck("em: countExact none", EditMatch.countExact("abc", "z") == 0);
+		// 보정 매칭 애매성: 들여쓰기만 다른 동일 블록이 두 곳 → ambiguous
+		EditMatch.Result amb = EditMatch.find("  if(x){\n    y();\n  }\nzz\n  if(x){\n    y();\n  }",
+				"if(x){\n  y();\n}");
+		ck("em: fuzzy ambiguous", amb != null && !amb.mode.equals("exact") && amb.ambiguous);
+		// 보정 매칭이 한 곳뿐이면 ambiguous=false
+		ck("em: fuzzy unique", r3 != null && !r3.ambiguous);
+		ck("em: exact not ambiguous", r1 != null && !r1.ambiguous);
 	}
 
 	static void verifyReport() {
@@ -206,6 +213,8 @@ public class TestRunner {
 		ck("eh: from1 A is a1", "a1".equals(from1.get("A.java")));
 		h.truncateTo(1);
 		ck("eh: truncate", h.size()==1 && h.get(0).label.equals("r1"));
+		h.truncateTo(-1); // 음수 인덱스는 전체 삭제 대신 무시
+		ck("eh: truncate negative no-op", h.size()==1 && h.get(0).label.equals("r1"));
 		h.push("empty", new ArrayList<>());
 		ck("eh: empty not pushed", h.size()==1);
 		// JSON 영속화 라운드트립
@@ -273,6 +282,9 @@ public class TestRunner {
 		ck("aec: persisted load", c2.history().size()==1 && "a0".equals(c2.restoreFrom(0).get("A.java")));
 		ck("aec: writeFile ok", AgentEditController.writeFile(proj, "sub/x.txt", "hi"));
 		ck("aec: writeFile escape blocked", !AgentEditController.writeFile(proj, "../escape.txt", "no"));
+		// 형제 디렉터리 접두어 우회("/root" vs "/rootX") 차단
+		ck("aec: writeFile sibling-prefix blocked",
+				!AgentEditController.writeFile(proj, "../" + proj.getName() + "-evil/x.txt", "no"));
 		c.truncateAndSave(0);
 		ck("aec: truncate", c.history().size()==0);
 	}
