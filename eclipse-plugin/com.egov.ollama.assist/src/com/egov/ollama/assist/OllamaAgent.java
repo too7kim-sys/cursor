@@ -549,22 +549,24 @@ public class OllamaAgent {
 			return "파일이 없습니다: " + rel;
 		}
 		String content = read(f);
-		int idx = content.indexOf(oldText);
-		if (idx < 0) {
+		EditMatch.Result m = EditMatch.find(content, oldText);
+		if (m == null) {
 			return "old_text 를 파일에서 찾지 못했습니다. read_file 로 정확한 내용(공백/들여쓰기 포함)을 확인하세요.";
 		}
-		if (content.indexOf(oldText, idx + 1) >= 0) {
+		if ("exact".equals(m.mode) && EditMatch.hasDuplicateExact(content, oldText)) {
 			return "old_text 가 여러 곳과 일치합니다. 더 길고 유일한 범위를 지정하세요.";
 		}
-		String updated = content.substring(0, idx) + newText + content.substring(idx + oldText.length());
+		String matched = content.substring(m.start, m.end);
+		String updated = content.substring(0, m.start) + newText + content.substring(m.end);
+		String note = "exact".equals(m.mode) ? "" : "  (공백/들여쓰기 보정 매칭)";
 		if (!confirm.ask("Ollama Agent — 부분 수정 확인",
-				"파일: " + rel + "\n\n" + TextDiff.unified(oldText, newText))) {
+				"파일: " + rel + note + "\n\n" + TextDiff.unified(matched, newText))) {
 			return "사용자가 수정을 취소했습니다: " + rel;
 		}
 		write(f, updated);
 		edited = true;
 		appliedChanges.add(new String[] { rel, content, updated });
-		return "부분 수정 완료: " + rel;
+		return "부분 수정 완료: " + rel + ("exact".equals(m.mode) ? "" : " (보정 매칭)");
 	}
 
 	private String writeFile(String rel, String content) throws IOException {
@@ -644,13 +646,7 @@ public class OllamaAgent {
 		}
 		if (env != null) {
 			log.progress("\n🔎 Problems 검증 중…\n");
-			String probs = env.getProblems();
-			if (probs == null || probs.startsWith("오류 0개")) {
-				return null;
-			}
-			if (probs.startsWith("오류 ")) {
-				return "컴파일 오류/경고가 있습니다:\n" + probs;
-			}
+			return VerifyReport.focusErrors(env.getProblems(), 30); // 오류만, 없으면 null(통과)
 		}
 		return null;
 	}

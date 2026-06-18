@@ -20,6 +20,8 @@ public class TestRunner {
 		problems();
 		changeParser();
 		ghostText();
+		editMatch();
+		verifyReport();
 		System.out.println("\n=== PASS=" + pass + " FAIL=" + fail + " ===");
 		if (fail > 0) System.exit(1);
 	}
@@ -145,5 +147,31 @@ public class TestRunner {
 		ck("gt: trailing ws then nl", GhostText.atLineEnd("ab  \nx", 2));
 		ck("gt: empty true", GhostText.atLineEnd("", 0));
 		ck("gt: null false", !GhostText.atLineEnd(null, 0));
+	}
+
+	static void editMatch() {
+		String c = "int a;\ndef();\nend";
+		EditMatch.Result r1 = EditMatch.find(c, "def();");
+		ck("em: exact", r1 != null && r1.mode.equals("exact") && c.substring(r1.start, r1.end).equals("def();"));
+		// 줄 끝 공백 차이
+		String c2 = "if(x){\n  y();  \n}";
+		EditMatch.Result r2 = EditMatch.find(c2, "if(x){\n  y();\n}");
+		ck("em: trailing ws", r2 != null && !r2.mode.equals("exact") && c2.substring(r2.start, r2.end).contains("y();"));
+		// 들여쓰기 차이(멀티라인 — exact 부분문자열로는 안 잡힘)
+		EditMatch.Result r3 = EditMatch.find("  if(x){\n    y();\n  }", "if(x){\n  y();\n}");
+		ck("em: indent", r3 != null && r3.mode.equals("indent") && "  if(x){\n    y();\n  }".substring(r3.start, r3.end).contains("y();"));
+		ck("em: not found", EditMatch.find("abc", "xyz") == null);
+		ck("em: dup exact", EditMatch.hasDuplicateExact("a x a x", "x"));
+		ck("em: no dup", !EditMatch.hasDuplicateExact("a x", "x"));
+	}
+
+	static void verifyReport() {
+		String p = "오류 1개, 경고 1개\nERROR A.java:3: msg\nWARN B.java:1: w";
+		String f = VerifyReport.focusErrors(p, 10);
+		ck("vr: keeps error", f != null && f.contains("ERROR A.java:3"));
+		ck("vr: drops warn", f != null && !f.contains("WARN"));
+		ck("vr: no errors null", VerifyReport.focusErrors("오류 0개, 경고 2개\nWARN x\nWARN y", 10) == null);
+		ck("vr: null", VerifyReport.focusErrors(null, 10) == null);
+		ck("vr: dedupe", VerifyReport.focusErrors("ERROR A:1: x\nERROR A:1: x", 10).contains("1개"));
 	}
 }
