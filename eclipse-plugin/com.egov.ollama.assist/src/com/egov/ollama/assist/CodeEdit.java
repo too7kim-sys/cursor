@@ -29,6 +29,20 @@ public final class CodeEdit {
 				+ "여분의 설명, 인사, 마크다운 코드펜스를 출력하지 않는다.";
 	}
 
+	/** 컴파일 오류/경고를 해결하도록 지시하는 프롬프트(Problems 퀵픽스용). */
+	public static String buildFixPrompt(String code, String errors, String lang) {
+		StringBuilder sb = new StringBuilder();
+		sb.append("아래 코드에서 다음 오류/경고를 해결하라. ");
+		sb.append("수정된 코드 전체만 출력하고, 설명·마크다운·코드펜스(```)는 절대 붙이지 마라. ");
+		sb.append("들여쓰기와 코드 스타일은 원본을 따르고, 오류와 무관한 변경은 하지 마라.\n");
+		if (lang != null && !lang.isEmpty()) {
+			sb.append("언어: ").append(lang).append('\n');
+		}
+		sb.append("----- 오류 -----\n").append(errors == null ? "" : errors).append('\n');
+		sb.append("\n----- 코드 -----\n").append(code == null ? "" : code);
+		return sb.toString();
+	}
+
 	/**
 	 * 모델 출력에서 실제 코드만 추출. 코드펜스(```)로 감싸진 경우 첫 블록 내용을 반환하고,
 	 * 아니면 앞뒤 공백만 정리해 그대로 반환한다.

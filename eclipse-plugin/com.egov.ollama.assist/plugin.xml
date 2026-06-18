@@ -53,6 +53,10 @@
             id="com.egov.ollama.assist.ghostComplete"
             name="Ollama: 고스트 완성(미리보기)"
             categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.fixError"
+            name="Ollama: 오류 수정(현재 줄/선택)"
+            categoryId="com.egov.ollama.assist.commands"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
@@ -83,6 +87,9 @@
       <handler
             commandId="com.egov.ollama.assist.ghostComplete"
             class="com.egov.ollama.assist.handlers.GhostCompleteHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.fixError"
+            class="com.egov.ollama.assist.handlers.FixErrorHandler"/>
    </extension>
 
    <extension point="org.eclipse.ui.bindings">
@@ -98,6 +105,10 @@
             sequence="M1+M3+I"
             commandId="com.egov.ollama.assist.inlineEdit"
             schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
+      <key
+            sequence="M1+M3+."
+            commandId="com.egov.ollama.assist.fixError"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
    </extension>
 
    <extension point="org.eclipse.ui.menus">
@@ -109,6 +120,7 @@
             <command commandId="com.egov.ollama.assist.inlineEdit" style="push"/>
             <command commandId="com.egov.ollama.assist.ghostComplete" style="push"/>
             <command commandId="com.egov.ollama.assist.complete" style="push"/>
+            <command commandId="com.egov.ollama.assist.fixError" style="push"/>
             <separator name="com.egov.ollama.assist.sep1" visible="true"/>
             <command commandId="com.egov.ollama.assist.explain" style="push"/>
             <command commandId="com.egov.ollama.assist.refactor" style="push"/>

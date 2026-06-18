@@ -10,6 +10,11 @@ import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.resource.JFaceResources;
+import org.eclipse.jface.text.BadLocationException;
+import org.eclipse.jface.text.IDocument;
+import org.eclipse.jface.text.ITextSelection;
+import org.eclipse.jface.viewers.ISelection;
+import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
@@ -28,16 +33,21 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Text;
+import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.part.ViewPart;
+import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.egov.ollama.assist.Activator;
 import com.egov.ollama.assist.CodebaseIndex;
 import com.egov.ollama.assist.EclipseEnvironment;
 import com.egov.ollama.assist.GitUtil;
+import com.egov.ollama.assist.Json;
 import com.egov.ollama.assist.MarkdownScanner;
+import com.egov.ollama.assist.Mentions;
 import com.egov.ollama.assist.OllamaAgent;
 import com.egov.ollama.assist.OllamaClient;
 import com.egov.ollama.assist.SlashCommands;
+import com.egov.ollama.assist.TextDiff;
 import com.egov.ollama.assist.WorkspaceUtil;
 import com.egov.ollama.assist.preferences.PreferenceConstants;
 
@@ -168,13 +178,14 @@ public class ChatView extends ViewPart {
 
 		// 뷰 툴바: 대화 지우기 / 저장
 		org.eclipse.jface.action.IToolBarManager tb = getViewSite().getActionBars().getToolBarManager();
-		tb.add(new org.eclipse.jface.action.Action("지우기") {
+		tb.add(new org.eclipse.jface.action.Action("새세션") {
 			@Override
 			public void run() {
 				if (output != null && !output.isDisposed()) {
 					output.setText("");
 				}
 				history.clear();
+				deleteSession();
 			}
 		});
 		tb.add(new org.eclipse.jface.action.Action("저장") {
@@ -189,6 +200,14 @@ public class ChatView extends ViewPart {
 				copyLastCode();
 			}
 		});
+		org.eclipse.jface.action.Action applyAction = new org.eclipse.jface.action.Action("에디터적용") {
+			@Override
+			public void run() {
+				applyLastCodeToEditor();
+			}
+		};
+		applyAction.setToolTipText("마지막 코드블록을 현재 편집기에 적용(선택 영역 교체 또는 커서 삽입, diff 확인)");
+		tb.add(applyAction);
 		org.eclipse.jface.action.Action darkAction = new org.eclipse.jface.action.Action("다크",
 				org.eclipse.jface.action.IAction.AS_CHECK_BOX) {
 			@Override
@@ -228,6 +247,10 @@ public class ChatView extends ViewPart {
 			dimLight.dispose();
 			dimDark.dispose();
 		});
+
+		// 이전 세션 복원(대화 내용 + 멀티턴 히스토리)
+		loadSession();
+		restyle();
 	}
 
 	// ===================== 표시(구문강조/테마/복사) =====================
@@ -267,6 +290,7 @@ public class ChatView extends ViewPart {
 			}
 			output.setStyleRange(r);
 		}
+		saveSession(); // 완료된 대화/히스토리 영속화(재시작 복원용)
 	}
 
 	private void restyleAsync() {
@@ -326,6 +350,191 @@ public class ChatView extends ViewPart {
 		}
 	}
 
+	// ===================== 에디터 적용 / @멘션 / 세션 =====================
+
+	/** 마지막 코드블록을 활성 편집기에 적용(선택 영역 교체 또는 커서 삽입, diff 확인). */
+	private void applyLastCodeToEditor() {
+		String code = MarkdownScanner.lastCodeBlock(output.getText());
+		if (code == null || code.isEmpty()) {
+			append("\n[안내] 적용할 코드블록이 없습니다.\n");
+			return;
+		}
+		IEditorPart ep = activeEditor();
+		if (!(ep instanceof ITextEditor)) {
+			MessageDialog.openInformation(output.getShell(), "에디터 적용", "먼저 코드를 적용할 편집기를 여세요.");
+			return;
+		}
+		ITextEditor te = (ITextEditor) ep;
+		IDocument doc = te.getDocumentProvider().getDocument(te.getEditorInput());
+		ISelection sel = te.getSelectionProvider().getSelection();
+		if (doc == null || !(sel instanceof ITextSelection)) {
+			return;
+		}
+		ITextSelection ts = (ITextSelection) sel;
+		int offset = ts.getOffset();
+		int length = ts.getLength();
+		String original;
+		try {
+			original = (length > 0) ? doc.get(offset, length) : "";
+		} catch (BadLocationException e) {
+			return;
+		}
+		DiffConfirmDialog diff = new DiffConfirmDialog(output.getShell(),
+				length > 0 ? "에디터 적용 — 선택 영역 교체" : "에디터 적용 — 커서 위치 삽입",
+				TextDiff.unified(original, code));
+		if (diff.open() != Window.OK) {
+			return;
+		}
+		try {
+			if (offset + length <= doc.getLength()) {
+				doc.replace(offset, length, code);
+				te.selectAndReveal(offset, code.length());
+				append("\n✅ 코드블록을 편집기에 적용했습니다.\n");
+			}
+		} catch (BadLocationException e) {
+			append("\n[적용 실패] " + e.getMessage() + "\n");
+		}
+	}
+
+	/** 입력의 @파일/@선택 멘션을 컨텍스트(코드블록)로 첨부한 프롬프트를 반환. */
+	private String resolveMentions(String text) {
+		java.util.List<String> names = Mentions.parse(text);
+		if (names.isEmpty()) {
+			return text;
+		}
+		StringBuilder ctx = new StringBuilder();
+		for (String name : names) {
+			if (Mentions.isSelection(name)) {
+				String selCode = activeEditorSelection();
+				if (selCode != null && !selCode.isEmpty()) {
+					ctx.append("\n[@selection 현재 편집기 선택]\n```\n").append(selCode).append("\n```\n");
+				}
+			} else {
+				String content = readProjectFile(name);
+				if (content != null) {
+					ctx.append("\n[@").append(name).append("]\n```\n").append(content).append("\n```\n");
+				}
+			}
+		}
+		if (ctx.length() == 0) {
+			return text;
+		}
+		return text + "\n\n----- 참고 컨텍스트 -----" + ctx;
+	}
+
+	private IEditorPart activeEditor() {
+		try {
+			return getSite().getWorkbenchWindow().getActivePage().getActiveEditor();
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	private String activeEditorSelection() {
+		IEditorPart ep = activeEditor();
+		if (ep instanceof ITextEditor) {
+			ISelection sel = ((ITextEditor) ep).getSelectionProvider().getSelection();
+			if (sel instanceof ITextSelection) {
+				return ((ITextSelection) sel).getText();
+			}
+		}
+		return null;
+	}
+
+	private String readProjectFile(String relPath) {
+		File root = selectedProjectDir();
+		if (root == null) {
+			return null;
+		}
+		try {
+			File f = new File(root, relPath);
+			if (!f.isFile()) {
+				return null;
+			}
+			if (!f.getCanonicalPath().startsWith(root.getCanonicalPath())) {
+				return null; // 프로젝트 밖 경로 차단
+			}
+			String s = new String(java.nio.file.Files.readAllBytes(f.toPath()),
+					java.nio.charset.StandardCharsets.UTF_8);
+			final int limit = 8000;
+			if (s.length() > limit) {
+				s = s.substring(0, limit) + "\n...(이하 생략)";
+			}
+			return s;
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	private File sessionFile(String name) {
+		try {
+			return Activator.getDefault().getStateLocation().append(name).toFile();
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/** 현재 대화 내용과 멀티턴 히스토리를 상태 폴더에 저장(재시작 후 복원용). */
+	private void saveSession() {
+		try {
+			File tf = sessionFile("session.txt");
+			if (tf != null && output != null && !output.isDisposed()) {
+				java.nio.file.Files.write(tf.toPath(),
+						output.getText().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			}
+			File hf = sessionFile("history.json");
+			if (hf != null) {
+				java.nio.file.Files.write(hf.toPath(),
+						Json.write(history).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			}
+		} catch (Exception e) {
+			Activator.logError("세션 저장 실패", e);
+		}
+	}
+
+	private void loadSession() {
+		try {
+			File tf = sessionFile("session.txt");
+			if (tf != null && tf.isFile() && output != null && !output.isDisposed()) {
+				String t = new String(java.nio.file.Files.readAllBytes(tf.toPath()),
+						java.nio.charset.StandardCharsets.UTF_8);
+				if (!t.isEmpty()) {
+					output.setText(t);
+				}
+			}
+			File hf = sessionFile("history.json");
+			if (hf != null && hf.isFile()) {
+				Object parsed = Json.parse(new String(java.nio.file.Files.readAllBytes(hf.toPath()),
+						java.nio.charset.StandardCharsets.UTF_8));
+				if (parsed instanceof java.util.List) {
+					history.clear();
+					for (Object o : (java.util.List<?>) parsed) {
+						history.add(o);
+					}
+				}
+			}
+		} catch (Exception e) {
+			Activator.logError("세션 로드 실패", e);
+		}
+	}
+
+	private void deleteSession() {
+		File tf = sessionFile("session.txt");
+		if (tf != null) {
+			tf.delete();
+		}
+		File hf = sessionFile("history.json");
+		if (hf != null) {
+			hf.delete();
+		}
+	}
+
+	@Override
+	public void dispose() {
+		saveSession();
+		super.dispose();
+	}
+
 	/** 편집기에서 선택한 코드를 입력창에 코드블록으로 채우고 포커스(핸들러에서 호출). */
 	public void prefillFromEditor(String code, String lang) {
 		if (input == null || input.isDisposed()) {
@@ -366,6 +575,8 @@ public class ChatView extends ViewPart {
 			}
 			// 알 수 없는 슬래시 명령은 그대로 전송
 		}
+		// @파일 / @선택 멘션을 컨텍스트로 첨부
+		text = resolveMentions(text);
 		if (agentCheck.getSelection()) {
 			runAgent(text);
 		} else {
