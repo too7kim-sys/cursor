@@ -102,6 +102,8 @@ public class ChatView extends ViewPart {
 	private File cachedFilesRoot;
 	private java.util.Map<String, String> cachedSymbols;
 	private File cachedSymbolsRoot;
+	private java.util.List<String[]> lastAgentChanges;
+	private File lastAgentRoot;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -258,6 +260,14 @@ public class ChatView extends ViewPart {
 		};
 		applyChangesAction.setToolTipText("답변의 파일 지정 코드블록들을 모아 멀티파일 일괄 적용(검토 패널)");
 		tb.add(applyChangesAction);
+		org.eclipse.jface.action.Action revertAction = new org.eclipse.jface.action.Action("되돌리기") {
+			@Override
+			public void run() {
+				revertLastAgentChanges();
+			}
+		};
+		revertAction.setToolTipText("마지막 에이전트 실행의 파일 변경을 변경 전 상태로 되돌리기(파일 선택)");
+		tb.add(revertAction);
 		org.eclipse.jface.action.Action darkAction = new org.eclipse.jface.action.Action("다크",
 				org.eclipse.jface.action.IAction.AS_CHECK_BOX) {
 			@Override
@@ -496,39 +506,59 @@ public class ChatView extends ViewPart {
 			}
 		}
 		final java.util.List<String[]> distinct = new java.util.ArrayList<>(map.values());
+		lastAgentChanges = distinct; // [되돌리기] 버튼으로 언제든 복구 가능하게 보관
+		lastAgentRoot = root;
 		StringBuilder sb = new StringBuilder("\n📝 에이전트가 변경한 파일 " + distinct.size() + "개:\n");
 		for (String[] c : distinct) {
 			sb.append("  • ").append(c[0]).append('\n');
 		}
+		sb.append("   (잘못된 변경은 툴바 [되돌리기] 로 복구)\n");
 		appendAsync(sb.toString());
 		if (distinct.size() < 2) {
-			return; // 단일 파일은 패널 생략(이미 변경 시 확인함)
+			return; // 단일 파일은 자동 패널 생략(필요 시 [되돌리기] 사용)
 		}
 		Display d = Display.getDefault();
 		if (d == null || d.isDisposed()) {
 			return;
 		}
-		d.asyncExec(() -> {
-			java.util.List<ChangeParser.Change> reverts = new java.util.ArrayList<>();
-			for (String[] c : distinct) {
-				reverts.add(new ChangeParser.Change(c[0], c[1])); // content=변경 전(되돌림 대상)
+		d.asyncExec(() -> showRevertDialog(distinct, root));
+	}
+
+	/** 되돌리기 패널: 선택한 파일을 변경 전 내용으로 복구. UI 스레드에서 호출. */
+	private void showRevertDialog(java.util.List<String[]> distinct, File root) {
+		if (distinct == null || distinct.isEmpty() || root == null) {
+			return;
+		}
+		java.util.List<ChangeParser.Change> reverts = new java.util.ArrayList<>();
+		for (String[] c : distinct) {
+			reverts.add(new ChangeParser.Change(c[0], c[1])); // content=변경 전(되돌림 대상)
+		}
+		ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), reverts, root,
+				"에이전트 변경 되돌리기 — 복구할 파일 선택(" + distinct.size() + ")", false);
+		if (dlg.open() != org.eclipse.jface.window.Window.OK) {
+			return;
+		}
+		int n = 0;
+		for (ChangeParser.Change ch : dlg.getAccepted()) {
+			if (writeProjectFile(root, ch.path, ch.content)) {
+				n++;
 			}
-			ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), reverts, root,
-					"에이전트 변경 검토 — 되돌릴 파일 선택(" + distinct.size() + ")", false);
-			if (dlg.open() != org.eclipse.jface.window.Window.OK) {
-				return;
-			}
-			int n = 0;
-			for (ChangeParser.Change ch : dlg.getAccepted()) {
-				if (writeProjectFile(root, ch.path, ch.content)) {
-					n++;
-				}
-			}
-			if (n > 0) {
-				WorkspaceUtil.refresh();
-				append("\n↩️ 되돌린 파일: " + n + "개\n");
-			}
-		});
+		}
+		if (n > 0) {
+			WorkspaceUtil.refresh();
+			cachedFiles = null;
+			cachedSymbols = null;
+			append("\n↩️ 되돌린 파일: " + n + "개\n");
+		}
+	}
+
+	/** 툴바 [되돌리기]: 마지막 에이전트 실행의 변경을 되돌릴 수 있는 패널을 연다(단일 파일 포함). */
+	private void revertLastAgentChanges() {
+		if (lastAgentChanges == null || lastAgentChanges.isEmpty() || lastAgentRoot == null) {
+			append("\n[안내] 되돌릴 에이전트 변경 기록이 없습니다.\n");
+			return;
+		}
+		showRevertDialog(lastAgentChanges, lastAgentRoot);
 	}
 
 	private boolean writeProjectFile(File root, String rel, String content) {
