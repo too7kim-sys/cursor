@@ -77,7 +77,7 @@ public class ChatView extends ViewPart {
 		output = new StyledText(parent, SWT.MULTI | SWT.READ_ONLY | SWT.WRAP | SWT.V_SCROLL | SWT.BORDER);
 		output.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 3, 1));
 		output.setText("Ollama Assist 준비됨.\n"
-				+ "· 일반 질문: 입력 후 [보내기] 또는 Ctrl+Enter\n"
+				+ "· 일반 질문: 입력 후 Enter(전송), Shift+Enter(줄바꿈)\n"
 				+ "· Agent 모드: AI가 프로젝트를 직접 검색/읽기/수정/생성합니다(변경 전 확인).\n"
 				+ "· 서버/모델/명령실행 허용: Window > Preferences > Ollama Assist\n");
 
@@ -115,7 +115,11 @@ public class ChatView extends ViewPart {
 		input.addKeyListener(new org.eclipse.swt.events.KeyAdapter() {
 			@Override
 			public void keyPressed(org.eclipse.swt.events.KeyEvent e) {
-				if ((e.keyCode == SWT.CR || e.keyCode == SWT.KEYPAD_CR) && (e.stateMask & SWT.CTRL) != 0) {
+				// Enter = 전송, Shift+Enter = 줄바꿈
+				if (e.keyCode == SWT.CR || e.keyCode == SWT.KEYPAD_CR) {
+					if ((e.stateMask & SWT.SHIFT) != 0) {
+						return; // 줄바꿈 허용
+					}
 					e.doit = false;
 					doSend();
 				}
