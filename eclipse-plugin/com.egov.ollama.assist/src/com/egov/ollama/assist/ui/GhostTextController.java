@@ -38,6 +38,9 @@ public final class GhostTextController {
 	private MouseListener mouse;
 	private boolean active;
 
+	/** 동시에 하나의 고스트만 표시되도록 추적(리스너 중첩 방지). */
+	private static GhostTextController current;
+
 	private GhostTextController(ITextEditor editor, StyledText st, IDocument doc, int offset, String suggestion) {
 		this.editor = editor;
 		this.st = st;
@@ -51,7 +54,12 @@ public final class GhostTextController {
 		if (st == null || st.isDisposed() || doc == null || suggestion == null || suggestion.isEmpty()) {
 			return;
 		}
-		new GhostTextController(editor, st, doc, offset, suggestion).install();
+		if (current != null && current.active) {
+			current.dismiss(); // 기존 고스트 정리 후 새로 표시
+		}
+		GhostTextController c = new GhostTextController(editor, st, doc, offset, suggestion);
+		current = c;
+		c.install();
 	}
 
 	private void install() {
@@ -136,6 +144,9 @@ public final class GhostTextController {
 			return;
 		}
 		active = false;
+		if (current == this) {
+			current = null;
+		}
 		if (st != null && !st.isDisposed()) {
 			st.removePaintListener(painter);
 			st.removeVerifyKeyListener(keys);

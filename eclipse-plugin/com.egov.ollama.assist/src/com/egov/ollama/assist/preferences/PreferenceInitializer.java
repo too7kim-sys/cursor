@@ -23,5 +23,6 @@ public class PreferenceInitializer extends AbstractPreferenceInitializer {
 		store.setDefault(PreferenceConstants.P_VERIFY_CMD, "");
 		store.setDefault(PreferenceConstants.P_CHAT_RAG, true);
 		store.setDefault(PreferenceConstants.P_FIM_MODEL, "qwen2.5-coder:1.5b-base");
+		store.setDefault(PreferenceConstants.P_AUTO_GHOST, false); // 자동 고스트 완성(실험적) 기본 끔
 	}
 }

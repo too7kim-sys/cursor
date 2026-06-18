@@ -7,7 +7,14 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
+import org.eclipse.jface.action.IMenuCreator;
+import org.eclipse.jface.dialogs.InputDialog;
 import org.eclipse.jface.dialogs.MessageDialog;
+import org.eclipse.jface.fieldassist.ContentProposal;
+import org.eclipse.jface.fieldassist.ContentProposalAdapter;
+import org.eclipse.jface.fieldassist.IContentProposal;
+import org.eclipse.jface.fieldassist.IContentProposalProvider;
+import org.eclipse.jface.fieldassist.TextContentAdapter;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.text.BadLocationException;
@@ -30,7 +37,10 @@ import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Menu;
+import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.IEditorPart;
@@ -40,12 +50,13 @@ import org.eclipse.ui.texteditor.ITextEditor;
 import com.egov.ollama.assist.Activator;
 import com.egov.ollama.assist.CodebaseIndex;
 import com.egov.ollama.assist.EclipseEnvironment;
+import com.egov.ollama.assist.FileProposals;
 import com.egov.ollama.assist.GitUtil;
-import com.egov.ollama.assist.Json;
 import com.egov.ollama.assist.MarkdownScanner;
 import com.egov.ollama.assist.Mentions;
 import com.egov.ollama.assist.OllamaAgent;
 import com.egov.ollama.assist.OllamaClient;
+import com.egov.ollama.assist.SessionStore;
 import com.egov.ollama.assist.SlashCommands;
 import com.egov.ollama.assist.TextDiff;
 import com.egov.ollama.assist.WorkspaceUtil;
@@ -84,6 +95,11 @@ public class ChatView extends ViewPart {
 	private Color darkFg;
 	private Color dimLight;
 	private Color dimDark;
+	private SessionStore sessions;
+	private String sessionId;
+	private String sessionName = "대화 1";
+	private java.util.List<String> cachedFiles;
+	private File cachedFilesRoot;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -178,16 +194,40 @@ public class ChatView extends ViewPart {
 
 		// 뷰 툴바: 대화 지우기 / 저장
 		org.eclipse.jface.action.IToolBarManager tb = getViewSite().getActionBars().getToolBarManager();
-		tb.add(new org.eclipse.jface.action.Action("새세션") {
+		org.eclipse.jface.action.Action sessionAction = new org.eclipse.jface.action.Action("세션",
+				org.eclipse.jface.action.IAction.AS_DROP_DOWN_MENU) {
 			@Override
 			public void run() {
-				if (output != null && !output.isDisposed()) {
-					output.setText("");
+				newSessionPrompt();
+			}
+		};
+		sessionAction.setToolTipText("대화 세션 — 클릭: 새 세션 / 드롭다운: 전환·이름변경·삭제");
+		sessionAction.setMenuCreator(new IMenuCreator() {
+			private Menu menu;
+
+			@Override
+			public void dispose() {
+				if (menu != null && !menu.isDisposed()) {
+					menu.dispose();
 				}
-				history.clear();
-				deleteSession();
+			}
+
+			@Override
+			public Menu getMenu(Menu parent) {
+				return null;
+			}
+
+			@Override
+			public Menu getMenu(Control parent) {
+				if (menu != null && !menu.isDisposed()) {
+					menu.dispose();
+				}
+				menu = new Menu(parent);
+				buildSessionMenu(menu);
+				return menu;
 			}
 		});
+		tb.add(sessionAction);
 		tb.add(new org.eclipse.jface.action.Action("저장") {
 			@Override
 			public void run() {
@@ -248,7 +288,16 @@ public class ChatView extends ViewPart {
 			dimDark.dispose();
 		});
 
-		// 이전 세션 복원(대화 내용 + 멀티턴 히스토리)
+		// @파일 자동완성
+		setupFileAutocomplete();
+
+		// 세션 저장소 초기화 + 현재 세션 복원
+		sessions = new SessionStore(new File(Activator.getDefault().getStateLocation().toFile(), "sessions"));
+		sessionId = sessions.getCurrent();
+		if (sessionId == null || sessions.load(sessionId) == null) {
+			sessionId = sessions.create(sessionName);
+			sessions.setCurrent(sessionId);
+		}
 		loadSession();
 		restyle();
 	}
@@ -466,66 +515,216 @@ public class ChatView extends ViewPart {
 		}
 	}
 
-	private File sessionFile(String name) {
-		try {
-			return Activator.getDefault().getStateLocation().append(name).toFile();
-		} catch (Exception e) {
-			return null;
-		}
-	}
-
-	/** 현재 대화 내용과 멀티턴 히스토리를 상태 폴더에 저장(재시작 후 복원용). */
+	/** 현재 대화 내용과 멀티턴 히스토리를 현재 세션에 저장(재시작 후 복원용). */
 	private void saveSession() {
+		if (sessions == null || sessionId == null) {
+			return;
+		}
 		try {
-			File tf = sessionFile("session.txt");
-			if (tf != null && output != null && !output.isDisposed()) {
-				java.nio.file.Files.write(tf.toPath(),
-						output.getText().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-			}
-			File hf = sessionFile("history.json");
-			if (hf != null) {
-				java.nio.file.Files.write(hf.toPath(),
-						Json.write(history).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-			}
+			SessionStore.Session s = new SessionStore.Session();
+			s.name = sessionName;
+			s.transcript = (output != null && !output.isDisposed()) ? output.getText() : "";
+			s.history = new java.util.ArrayList<>(history);
+			sessions.save(sessionId, s);
 		} catch (Exception e) {
 			Activator.logError("세션 저장 실패", e);
 		}
 	}
 
 	private void loadSession() {
-		try {
-			File tf = sessionFile("session.txt");
-			if (tf != null && tf.isFile() && output != null && !output.isDisposed()) {
-				String t = new String(java.nio.file.Files.readAllBytes(tf.toPath()),
-						java.nio.charset.StandardCharsets.UTF_8);
-				if (!t.isEmpty()) {
-					output.setText(t);
-				}
-			}
-			File hf = sessionFile("history.json");
-			if (hf != null && hf.isFile()) {
-				Object parsed = Json.parse(new String(java.nio.file.Files.readAllBytes(hf.toPath()),
-						java.nio.charset.StandardCharsets.UTF_8));
-				if (parsed instanceof java.util.List) {
-					history.clear();
-					for (Object o : (java.util.List<?>) parsed) {
-						history.add(o);
-					}
-				}
-			}
-		} catch (Exception e) {
-			Activator.logError("세션 로드 실패", e);
+		if (sessions == null || sessionId == null) {
+			return;
+		}
+		SessionStore.Session s = sessions.load(sessionId);
+		if (s == null) {
+			return;
+		}
+		sessionName = (s.name == null || s.name.isEmpty()) ? "대화" : s.name;
+		if (output != null && !output.isDisposed()) {
+			output.setText(s.transcript == null ? "" : s.transcript);
+		}
+		history.clear();
+		if (s.history != null) {
+			history.addAll(s.history);
 		}
 	}
 
-	private void deleteSession() {
-		File tf = sessionFile("session.txt");
-		if (tf != null) {
-			tf.delete();
+	private void buildSessionMenu(Menu menu) {
+		if (sessions == null) {
+			return;
 		}
-		File hf = sessionFile("history.json");
-		if (hf != null) {
-			hf.delete();
+		for (SessionStore.Info info : sessions.list()) {
+			MenuItem mi = new MenuItem(menu, SWT.RADIO);
+			mi.setText(info.name == null || info.name.isEmpty() ? info.id : info.name);
+			mi.setSelection(info.id.equals(sessionId));
+			final String id = info.id;
+			mi.addSelectionListener(new SelectionAdapter() {
+				@Override
+				public void widgetSelected(SelectionEvent e) {
+					if (((MenuItem) e.widget).getSelection()) {
+						switchSession(id);
+					}
+				}
+			});
+		}
+		new MenuItem(menu, SWT.SEPARATOR);
+		addPush(menu, "새 세션…", this::newSessionPrompt);
+		addPush(menu, "이름 변경…", this::renameSessionPrompt);
+		addPush(menu, "현재 세션 삭제", this::deleteCurrentSession);
+	}
+
+	private void addPush(Menu menu, String text, Runnable action) {
+		MenuItem mi = new MenuItem(menu, SWT.PUSH);
+		mi.setText(text);
+		mi.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				action.run();
+			}
+		});
+	}
+
+	private void switchSession(String id) {
+		if (id == null || id.equals(sessionId)) {
+			return;
+		}
+		saveSession();
+		sessionId = id;
+		sessions.setCurrent(id);
+		loadSession();
+		restyle();
+	}
+
+	private void newSessionPrompt() {
+		InputDialog dlg = new InputDialog(output.getShell(), "새 세션", "새 대화 이름:", "대화", null);
+		if (dlg.open() != org.eclipse.jface.window.Window.OK) {
+			return;
+		}
+		saveSession();
+		String name = dlg.getValue();
+		sessionId = sessions.create(name);
+		sessions.setCurrent(sessionId);
+		sessionName = (name == null || name.trim().isEmpty()) ? "새 대화" : name.trim();
+		history.clear();
+		if (output != null && !output.isDisposed()) {
+			output.setText("");
+		}
+	}
+
+	private void renameSessionPrompt() {
+		InputDialog dlg = new InputDialog(output.getShell(), "세션 이름 변경", "새 이름:", sessionName, null);
+		if (dlg.open() != org.eclipse.jface.window.Window.OK) {
+			return;
+		}
+		String name = dlg.getValue();
+		if (name != null && !name.trim().isEmpty()) {
+			sessionName = name.trim();
+			saveSession();
+		}
+	}
+
+	private void deleteCurrentSession() {
+		if (!MessageDialog.openConfirm(output.getShell(), "세션 삭제", "현재 세션 '" + sessionName + "' 을 삭제할까요?")) {
+			return;
+		}
+		sessions.delete(sessionId);
+		java.util.List<SessionStore.Info> rest = sessions.list();
+		if (rest.isEmpty()) {
+			sessionId = sessions.create("대화 1");
+		} else {
+			sessionId = rest.get(0).id;
+		}
+		sessions.setCurrent(sessionId);
+		loadSession();
+		restyle();
+	}
+
+	// ----- @파일 자동완성 -----
+
+	private void setupFileAutocomplete() {
+		if (input == null || input.isDisposed()) {
+			return;
+		}
+		ContentProposalAdapter adapter = new ContentProposalAdapter(input, new TextContentAdapter(),
+				fileProposalProvider(), null, new char[] { '@' });
+		adapter.setProposalAcceptanceStyle(ContentProposalAdapter.PROPOSAL_IGNORE);
+		adapter.addContentProposalListener(this::acceptFileProposal);
+	}
+
+	private IContentProposalProvider fileProposalProvider() {
+		return (contents, position) -> {
+			String token = FileProposals.tokenAt(contents, position);
+			if (token == null) {
+				return new IContentProposal[0];
+			}
+			java.util.List<IContentProposal> props = new java.util.ArrayList<>();
+			if (Mentions.SELECTION.startsWith(token.toLowerCase())) {
+				props.add(new ContentProposal("selection", "@selection (현재 편집기 선택)", "현재 편집기에서 선택한 코드를 첨부"));
+			}
+			for (String p : FileProposals.match(projectFiles(), token, 50)) {
+				props.add(new ContentProposal(p, p, null));
+			}
+			return props.toArray(new IContentProposal[0]);
+		};
+	}
+
+	private void acceptFileProposal(IContentProposal proposal) {
+		if (input == null || input.isDisposed() || proposal == null) {
+			return;
+		}
+		String text = input.getText();
+		int caret = input.getCaretPosition();
+		String token = FileProposals.tokenAt(text, caret);
+		if (token == null) {
+			return;
+		}
+		int at = caret - token.length() - 1; // '@' 위치
+		if (at < 0) {
+			return;
+		}
+		String insert = "@" + proposal.getContent();
+		input.setText(text.substring(0, at) + insert + text.substring(caret));
+		input.setSelection(at + insert.length());
+		input.setFocus();
+	}
+
+	private java.util.List<String> projectFiles() {
+		File root = selectedProjectDir();
+		if (root == null) {
+			return java.util.Collections.emptyList();
+		}
+		if (cachedFiles != null && root.equals(cachedFilesRoot)) {
+			return cachedFiles;
+		}
+		java.util.List<String> list = new java.util.ArrayList<>();
+		collectFiles(root, root, list, 0);
+		cachedFiles = list;
+		cachedFilesRoot = root;
+		return list;
+	}
+
+	private void collectFiles(File base, File dir, java.util.List<String> out, int depth) {
+		if (out.size() >= 3000 || depth > 12) {
+			return;
+		}
+		File[] kids = dir.listFiles();
+		if (kids == null) {
+			return;
+		}
+		for (File f : kids) {
+			String name = f.getName();
+			if (name.startsWith(".") || name.equals("bin") || name.equals("node_modules") || name.equals("target")
+					|| name.equals("build")) {
+				continue;
+			}
+			if (f.isDirectory()) {
+				collectFiles(base, f, out, depth + 1);
+			} else {
+				out.add(base.toPath().relativize(f.toPath()).toString().replace('\\', '/'));
+			}
+			if (out.size() >= 3000) {
+				return;
+			}
 		}
 	}
 

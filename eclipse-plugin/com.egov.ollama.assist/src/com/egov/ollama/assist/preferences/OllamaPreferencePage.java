@@ -51,6 +51,9 @@ public class OllamaPreferencePage extends FieldEditorPreferencePage implements I
 		addField(new BooleanFieldEditor(PreferenceConstants.P_CHAT_RAG,
 				"채팅에 코드 자동 참고(RAG) — 색인이 있으면 관련 코드를 자동 첨부",
 				getFieldEditorParent()));
+		addField(new BooleanFieldEditor(PreferenceConstants.P_AUTO_GHOST,
+				"자동 고스트 완성 — 타이핑을 멈추면 자동으로 제안 표시 (실험적, 로컬 모델 지연 주의)",
+				getFieldEditorParent()));
 	}
 
 	@Override

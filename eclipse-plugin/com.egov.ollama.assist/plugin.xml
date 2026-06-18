@@ -57,6 +57,10 @@
             id="com.egov.ollama.assist.fixError"
             name="Ollama: 오류 수정(현재 줄/선택)"
             categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.fixMarker"
+            name="Ollama: AI로 고치기"
+            categoryId="com.egov.ollama.assist.commands"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
@@ -90,6 +94,9 @@
       <handler
             commandId="com.egov.ollama.assist.fixError"
             class="com.egov.ollama.assist.handlers.FixErrorHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.fixMarker"
+            class="com.egov.ollama.assist.handlers.FixMarkerHandler"/>
    </extension>
 
    <extension point="org.eclipse.ui.bindings">
@@ -130,6 +137,14 @@
             <command commandId="com.egov.ollama.assist.sendToView" style="push"/>
          </menu>
       </menuContribution>
+      <menuContribution
+            locationURI="popup:org.eclipse.ui.views.ProblemView?after=additions">
+         <command commandId="com.egov.ollama.assist.fixMarker" style="push"/>
+      </menuContribution>
+   </extension>
+
+   <extension point="org.eclipse.ui.startup">
+      <startup class="com.egov.ollama.assist.AutoGhostManager"/>
    </extension>
 
    <extension point="org.eclipse.ui.preferencePages">
