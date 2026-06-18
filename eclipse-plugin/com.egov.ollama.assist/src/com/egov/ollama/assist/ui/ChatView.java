@@ -186,12 +186,15 @@ public class ChatView extends ViewPart {
 				copyLastCode();
 			}
 		});
-		tb.add(new org.eclipse.jface.action.Action("다크") {
+		org.eclipse.jface.action.Action darkAction = new org.eclipse.jface.action.Action("다크",
+				org.eclipse.jface.action.IAction.AS_CHECK_BOX) {
 			@Override
 			public void run() {
-				toggleDark();
+				applyTheme(isChecked());
 			}
-		});
+		};
+		darkAction.setToolTipText("다크 테마 켜기/끄기");
+		tb.add(darkAction);
 
 		// 구문강조용 색상 생성 + 정리
 		Color disp1 = new Color(parent.getDisplay(), 240, 240, 240);
@@ -200,6 +203,9 @@ public class ChatView extends ViewPart {
 		darkFg = new Color(parent.getDisplay(), 220, 220, 220);
 		codeBgLight = disp1;
 		codeBgDark = disp2;
+		// Eclipse CSS 테마 엔진이 우리 색을 흰색으로 덮어쓰지 않도록 위젯 CSS 적용을 해제
+		output.setData("org.eclipse.e4.ui.css.disabled", Boolean.TRUE);
+		input.setData("org.eclipse.e4.ui.css.disabled", Boolean.TRUE);
 		output.addDisposeListener(e -> {
 			codeBgLight.dispose();
 			codeBgDark.dispose();
@@ -250,8 +256,8 @@ public class ChatView extends ViewPart {
 		}
 	}
 
-	private void toggleDark() {
-		dark = !dark;
+	private void applyTheme(boolean on) {
+		dark = on;
 		if (output != null && !output.isDisposed()) {
 			output.setBackground(dark ? darkBg : null);
 			output.setForeground(dark ? darkFg : null);
