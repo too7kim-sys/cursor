@@ -22,6 +22,7 @@ public class TestRunner {
 		ghostText();
 		editMatch();
 		verifyReport();
+		editHistory();
 		System.out.println("\n=== PASS=" + pass + " FAIL=" + fail + " ===");
 		if (fail > 0) System.exit(1);
 	}
@@ -185,5 +186,23 @@ public class TestRunner {
 		ck("vr: testlog keeps fail", tl != null && tl.contains("Tests run") && tl.contains("AssertionError"));
 		ck("vr: testlog drops noise", tl != null && !tl.contains("compiling..."));
 		ck("vr: testlog none null", VerifyReport.focusTestLog("all good\nclean", 10) == null);
+	}
+
+	static void editHistory() {
+		EditHistory h = new EditHistory();
+		List<String[]> r1 = new ArrayList<>(); r1.add(new String[]{"A.java","a0","a1"});
+		List<String[]> r2 = new ArrayList<>(); r2.add(new String[]{"A.java","a1","a2"}); r2.add(new String[]{"B.java","","b1"});
+		h.push("r1", r1);
+		h.push("r2", r2);
+		ck("eh: size", h.size()==2);
+		java.util.Map<String,String> from0 = h.restoreStateFrom(0);
+		ck("eh: earliest before A", "a0".equals(from0.get("A.java")));
+		ck("eh: B before", "".equals(from0.get("B.java")));
+		java.util.Map<String,String> from1 = h.restoreStateFrom(1);
+		ck("eh: from1 A is a1", "a1".equals(from1.get("A.java")));
+		h.truncateTo(1);
+		ck("eh: truncate", h.size()==1 && h.get(0).label.equals("r1"));
+		h.push("empty", new ArrayList<>());
+		ck("eh: empty not pushed", h.size()==1);
 	}
 }

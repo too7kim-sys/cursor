@@ -102,8 +102,8 @@ public class ChatView extends ViewPart {
 	private File cachedFilesRoot;
 	private java.util.Map<String, String> cachedSymbols;
 	private File cachedSymbolsRoot;
-	private java.util.List<String[]> lastAgentChanges;
-	private File lastAgentRoot;
+	private final com.egov.ollama.assist.EditHistory editHistory = new com.egov.ollama.assist.EditHistory();
+	private File historyRoot;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -491,8 +491,8 @@ public class ChatView extends ViewPart {
 		append("\n✅ 멀티파일 변경 적용: " + ok + "/" + accepted.size() + " 파일\n");
 	}
 
-	/** 에이전트 실행 후 변경 파일 요약을 출력하고, 2개 이상이면 되돌리기 검토 패널을 띄운다. */
-	private void reviewAgentChangesAsync(java.util.List<String[]> raw, File root) {
+	/** 에이전트 실행 후 변경을 히스토리에 적재하고 요약 출력, 2개 이상이면 되돌리기 패널을 띄운다. */
+	private void reviewAgentChangesAsync(java.util.List<String[]> raw, File root, String label) {
 		if (raw == null || raw.isEmpty() || root == null) {
 			return;
 		}
@@ -506,13 +506,18 @@ public class ChatView extends ViewPart {
 			}
 		}
 		final java.util.List<String[]> distinct = new java.util.ArrayList<>(map.values());
-		lastAgentChanges = distinct; // [되돌리기] 버튼으로 언제든 복구 가능하게 보관
-		lastAgentRoot = root;
-		StringBuilder sb = new StringBuilder("\n📝 에이전트가 변경한 파일 " + distinct.size() + "개:\n");
+		if (!root.equals(historyRoot)) {
+			editHistory.clear(); // 프로젝트가 바뀌면 히스토리 초기화
+			historyRoot = root;
+		}
+		editHistory.push(label, distinct); // 다단계 되돌리기용 체크포인트
+		final int index = editHistory.size() - 1;
+		StringBuilder sb = new StringBuilder("\n📝 에이전트가 변경한 파일 " + distinct.size() + "개 (체크포인트 #"
+				+ (index + 1) + "):\n");
 		for (String[] c : distinct) {
 			sb.append("  • ").append(c[0]).append('\n');
 		}
-		sb.append("   (잘못된 변경은 툴바 [되돌리기] 로 복구)\n");
+		sb.append("   (잘못된 변경은 툴바 [되돌리기] 로 단계별 복구)\n");
 		appendAsync(sb.toString());
 		if (distinct.size() < 2) {
 			return; // 단일 파일은 자동 패널 생략(필요 시 [되돌리기] 사용)
@@ -521,44 +526,70 @@ public class ChatView extends ViewPart {
 		if (d == null || d.isDisposed()) {
 			return;
 		}
-		d.asyncExec(() -> showRevertDialog(distinct, root));
+		d.asyncExec(() -> showRevertFrom(index));
 	}
 
-	/** 되돌리기 패널: 선택한 파일을 변경 전 내용으로 복구. UI 스레드에서 호출. */
-	private void showRevertDialog(java.util.List<String[]> distinct, File root) {
-		if (distinct == null || distinct.isEmpty() || root == null) {
+	/** index 체크포인트 시점 이후를 되돌리는 패널. UI 스레드에서 호출. */
+	private void showRevertFrom(int index) {
+		if (historyRoot == null || index < 0 || index >= editHistory.size()) {
+			return;
+		}
+		java.util.Map<String, String> restore = editHistory.restoreStateFrom(index);
+		if (restore.isEmpty()) {
 			return;
 		}
 		java.util.List<ChangeParser.Change> reverts = new java.util.ArrayList<>();
-		for (String[] c : distinct) {
-			reverts.add(new ChangeParser.Change(c[0], c[1])); // content=변경 전(되돌림 대상)
+		for (java.util.Map.Entry<String, String> e : restore.entrySet()) {
+			reverts.add(new ChangeParser.Change(e.getKey(), e.getValue())); // content=복원할 내용
 		}
-		ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), reverts, root,
-				"에이전트 변경 되돌리기 — 복구할 파일 선택(" + distinct.size() + ")", false);
+		ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), reverts, historyRoot,
+				"되돌리기 — 체크포인트 #" + (index + 1) + " 이후 복구(" + reverts.size() + "파일)", true);
 		if (dlg.open() != org.eclipse.jface.window.Window.OK) {
 			return;
 		}
 		int n = 0;
 		for (ChangeParser.Change ch : dlg.getAccepted()) {
-			if (writeProjectFile(root, ch.path, ch.content)) {
+			if (writeProjectFile(historyRoot, ch.path, ch.content)) {
 				n++;
 			}
 		}
 		if (n > 0) {
+			editHistory.truncateTo(index); // 되돌린 시점 이후 기록 제거
 			WorkspaceUtil.refresh();
 			cachedFiles = null;
 			cachedSymbols = null;
-			append("\n↩️ 되돌린 파일: " + n + "개\n");
+			append("\n↩️ 되돌린 파일: " + n + "개 (체크포인트 #" + (index + 1) + " 이후)\n");
 		}
 	}
 
-	/** 툴바 [되돌리기]: 마지막 에이전트 실행의 변경을 되돌릴 수 있는 패널을 연다(단일 파일 포함). */
+	/** 툴바 [되돌리기]: 체크포인트를 골라 그 시점 이후를 되돌린다(다단계). */
 	private void revertLastAgentChanges() {
-		if (lastAgentChanges == null || lastAgentChanges.isEmpty() || lastAgentRoot == null) {
+		int size = editHistory.size();
+		if (size == 0 || historyRoot == null) {
 			append("\n[안내] 되돌릴 에이전트 변경 기록이 없습니다.\n");
 			return;
 		}
-		showRevertDialog(lastAgentChanges, lastAgentRoot);
+		// 최신 체크포인트가 위에 오도록 인덱스 목록 구성
+		Integer[] indices = new Integer[size];
+		for (int i = 0; i < size; i++) {
+			indices[i] = size - 1 - i;
+		}
+		org.eclipse.ui.dialogs.ElementListSelectionDialog sel = new org.eclipse.ui.dialogs.ElementListSelectionDialog(
+				output.getShell(), new org.eclipse.jface.viewers.LabelProvider() {
+					@Override
+					public String getText(Object o) {
+						int i = (Integer) o;
+						EditHistory.Checkpoint cp = editHistory.get(i);
+						return "#" + (i + 1) + "  " + cp.fileCount() + "파일  "
+								+ (cp.label == null ? "" : cp.label.replaceAll("\\s+", " ").trim());
+					}
+				});
+		sel.setTitle("되돌리기 — 체크포인트 선택");
+		sel.setMessage("선택한 체크포인트 시점 이후의 변경을 되돌립니다(그 시점부터 최신까지):");
+		sel.setElements(indices);
+		if (sel.open() == org.eclipse.jface.window.Window.OK && sel.getFirstResult() instanceof Integer) {
+			showRevertFrom((Integer) sel.getFirstResult());
+		}
 	}
 
 	private boolean writeProjectFile(File root, String rel, String content) {
@@ -1221,7 +1252,7 @@ public class ChatView extends ViewPart {
 					agent.setMaxVerify(verifyRounds);
 					agent.run(userPrompt);
 					WorkspaceUtil.refresh();
-					reviewAgentChangesAsync(agent.getAppliedChanges(), root);
+					reviewAgentChangesAsync(agent.getAppliedChanges(), root, userPrompt);
 				} catch (Exception ex) {
 					appendAsync("\n\n[오류] " + ex.getMessage() + "\n");
 					Activator.logError("Agent 실행 실패", ex);
