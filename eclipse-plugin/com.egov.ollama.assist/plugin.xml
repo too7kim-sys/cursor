@@ -45,6 +45,14 @@
             id="com.egov.ollama.assist.review"
             name="Ollama: 코드 리뷰"
             categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.inlineEdit"
+            name="Ollama: 인라인 편집(선택 코드 수정)"
+            categoryId="com.egov.ollama.assist.commands"/>
+      <command
+            id="com.egov.ollama.assist.ghostComplete"
+            name="Ollama: 고스트 완성(미리보기)"
+            categoryId="com.egov.ollama.assist.commands"/>
    </extension>
 
    <extension point="org.eclipse.ui.handlers">
@@ -69,6 +77,12 @@
       <handler
             commandId="com.egov.ollama.assist.review"
             class="com.egov.ollama.assist.handlers.ReviewHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.inlineEdit"
+            class="com.egov.ollama.assist.handlers.InlineEditHandler"/>
+      <handler
+            commandId="com.egov.ollama.assist.ghostComplete"
+            class="com.egov.ollama.assist.handlers.GhostCompleteHandler"/>
    </extension>
 
    <extension point="org.eclipse.ui.bindings">
@@ -78,7 +92,11 @@
             schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
       <key
             sequence="M1+M3+SPACE"
-            commandId="com.egov.ollama.assist.complete"
+            commandId="com.egov.ollama.assist.ghostComplete"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
+      <key
+            sequence="M1+M3+I"
+            commandId="com.egov.ollama.assist.inlineEdit"
             schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"/>
    </extension>
 
@@ -88,6 +106,10 @@
          <menu
                id="com.egov.ollama.assist.menu"
                label="Ollama Assist">
+            <command commandId="com.egov.ollama.assist.inlineEdit" style="push"/>
+            <command commandId="com.egov.ollama.assist.ghostComplete" style="push"/>
+            <command commandId="com.egov.ollama.assist.complete" style="push"/>
+            <separator name="com.egov.ollama.assist.sep1" visible="true"/>
             <command commandId="com.egov.ollama.assist.explain" style="push"/>
             <command commandId="com.egov.ollama.assist.refactor" style="push"/>
             <command commandId="com.egov.ollama.assist.test" style="push"/>
