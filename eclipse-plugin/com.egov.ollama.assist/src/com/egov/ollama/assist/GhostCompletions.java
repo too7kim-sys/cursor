@@ -51,13 +51,7 @@ public final class GhostCompletions {
 		IPreferenceStore store = Activator.getDefault().getPreferenceStore();
 		final String base = store.getString(PreferenceConstants.P_BASE_URL);
 		final String model = store.getString(PreferenceConstants.P_FIM_MODEL);
-		double t = 0.1;
-		try {
-			t = Double.parseDouble(store.getString(PreferenceConstants.P_TEMPERATURE));
-		} catch (Exception ignore) {
-			// 기본 0.1
-		}
-		final double temperature = t;
+		final double temperature = CodeEdit.parseTemperature(store.getString(PreferenceConstants.P_TEMPERATURE), 0.1);
 		final Display display = st.getDisplay();
 
 		Job job = new Job("Ollama 고스트 완성") {

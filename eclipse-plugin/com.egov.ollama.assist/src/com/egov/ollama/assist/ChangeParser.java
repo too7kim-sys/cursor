@@ -50,7 +50,7 @@ public final class ChangeParser {
 					path = pendingPath;
 				}
 				if (path != null) {
-					out.add(new Change(path, stripTrailingNewline(sb.toString())));
+					out.add(new Change(path, MarkdownScanner.stripTrailingNewlines(sb.toString())));
 				}
 				pendingPath = null;
 				i = j + 1;
@@ -99,13 +99,5 @@ public final class ChangeParser {
 
 	private static String stripQuotes(String s) {
 		return s.replaceAll("^[`\"']+", "").replaceAll("[`\"']+$", "");
-	}
-
-	private static String stripTrailingNewline(String s) {
-		int end = s.length();
-		while (end > 0 && (s.charAt(end - 1) == '\n' || s.charAt(end - 1) == '\r')) {
-			end--;
-		}
-		return s.substring(0, end);
 	}
 }

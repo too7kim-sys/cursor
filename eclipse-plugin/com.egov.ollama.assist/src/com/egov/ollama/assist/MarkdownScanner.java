@@ -132,7 +132,7 @@ public final class MarkdownScanner {
 		return null;
 	}
 
-	private static String stripTrailingNewlines(String s) {
+	public static String stripTrailingNewlines(String s) {
 		int end = s.length();
 		while (end > 0 && (s.charAt(end - 1) == '\n' || s.charAt(end - 1) == '\r')) {
 			end--;

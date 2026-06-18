@@ -48,6 +48,7 @@ import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.egov.ollama.assist.Activator;
 import com.egov.ollama.assist.ChangeParser;
+import com.egov.ollama.assist.CodeEdit;
 import com.egov.ollama.assist.CodebaseIndex;
 import com.egov.ollama.assist.EclipseEnvironment;
 import com.egov.ollama.assist.FileProposals;
@@ -359,13 +360,20 @@ public class ChatView extends ViewPart {
 			}
 			output.setStyleRange(r);
 		}
-		saveSession(); // 완료된 대화/히스토리 영속화(재시작 복원용)
 	}
 
 	private void restyleAsync() {
 		Display d = Display.getDefault();
 		if (d != null && !d.isDisposed()) {
 			d.asyncExec(this::restyle);
+		}
+	}
+
+	/** 대화/히스토리 영속화를 UI 스레드에서 수행(응답 완료 시 호출). */
+	private void saveSessionAsync() {
+		Display d = Display.getDefault();
+		if (d != null && !d.isDisposed()) {
+			d.asyncExec(this::saveSession);
 		}
 	}
 
@@ -1461,6 +1469,7 @@ public class ChatView extends ViewPart {
 		setSendEnabledAsync(true);
 		setStopEnabledAsync(false);
 		restyleAsync();
+		saveSessionAsync(); // 응답 완료 시에만 영속화(restyle 와 분리)
 	}
 
 	private void append(String s) {
@@ -1545,18 +1554,8 @@ public class ChatView extends ViewPart {
 
 	/** temperature 문자열을 0.0~2.0 범위 double 로 파싱(잘못되면 0.2). */
 	private static double parseTemp(String s) {
-		try {
-			double t = Double.parseDouble(s.trim());
-			if (t < 0) {
-				return 0;
-			}
-			if (t > 2) {
-				return 2;
-			}
-			return t;
-		} catch (Exception e) {
-			return 0.2;
-		}
+		double t = CodeEdit.parseTemperature(s, 0.2);
+		return t < 0 ? 0 : (t > 2 ? 2 : t); // 코딩 안정성 위해 0~2 로 제한
 	}
 
 	@Override

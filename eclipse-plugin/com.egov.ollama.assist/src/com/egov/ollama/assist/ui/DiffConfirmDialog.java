@@ -45,11 +45,12 @@ public class DiffConfirmDialog extends Dialog {
 		st.setLayoutData(gd);
 		st.setFont(JFaceResources.getTextFont());
 		st.setText(body);
-		colorize(st);
+		colorizeDiff(st);
 		return container;
 	}
 
-	private void colorize(StyledText st) {
+	/** "- "(삭제)는 빨강, "+ "(추가)는 초록으로 표시. 다른 diff 뷰에서도 재사용. */
+	public static void colorizeDiff(StyledText st) {
 		Display d = st.getDisplay();
 		Color red = d.getSystemColor(SWT.COLOR_RED);
 		Color green = d.getSystemColor(SWT.COLOR_DARK_GREEN);

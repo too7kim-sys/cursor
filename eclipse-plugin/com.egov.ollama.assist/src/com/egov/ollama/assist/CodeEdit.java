@@ -9,6 +9,18 @@ public final class CodeEdit {
 	private CodeEdit() {
 	}
 
+	/** temperature 문자열을 파싱(실패 시 def). 여러 핸들러의 try/catch 중복 제거용. */
+	public static double parseTemperature(String raw, double def) {
+		if (raw == null) {
+			return def;
+		}
+		try {
+			return Double.parseDouble(raw.trim());
+		} catch (Exception e) {
+			return def;
+		}
+	}
+
 	/** 선택 코드를 지시대로 고치도록 지시하는 사용자 프롬프트. 설명/펜스 없이 코드만 받도록 유도. */
 	public static String buildEditPrompt(String code, String instruction, String lang) {
 		StringBuilder sb = new StringBuilder();

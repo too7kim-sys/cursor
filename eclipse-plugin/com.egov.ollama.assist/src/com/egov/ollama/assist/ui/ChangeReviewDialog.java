@@ -8,11 +8,9 @@ import org.eclipse.jface.dialogs.Dialog;
 import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.SashForm;
-import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
-import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
@@ -100,25 +98,7 @@ public class ChangeReviewDialog extends Dialog {
 		ChangeParser.Change ch = (ChangeParser.Change) table.getItem(idx).getData();
 		String old = readFile(new File(root, ch.path));
 		diffArea.setText(TextDiff.unified(old, ch.content));
-		colorize(diffArea);
-	}
-
-	private void colorize(StyledText st) {
-		Color red = st.getDisplay().getSystemColor(SWT.COLOR_RED);
-		Color green = st.getDisplay().getSystemColor(SWT.COLOR_DARK_GREEN);
-		String text = st.getText();
-		int offset = 0;
-		for (String line : text.split("\n", -1)) {
-			int len = line.length();
-			if (len > 0) {
-				if (line.startsWith("- ")) {
-					st.setStyleRange(new StyleRange(offset, len, red, null));
-				} else if (line.startsWith("+ ")) {
-					st.setStyleRange(new StyleRange(offset, len, green, null));
-				}
-			}
-			offset += len + 1;
-		}
+		DiffConfirmDialog.colorizeDiff(diffArea);
 	}
 
 	private static String readFile(File f) {

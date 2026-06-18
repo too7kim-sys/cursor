@@ -82,20 +82,15 @@ public class InlineEditHandler extends AbstractHandler {
 			return null;
 		}
 
-		final String lang = fileExtension(te);
+		String name = te.getEditorInput() != null ? te.getEditorInput().getName() : "";
+		final String lang = FixSupport.fileExtension(name == null ? "" : name);
 		final int fOffset = offset;
 		final int fLength = length;
 
 		IPreferenceStore store = Activator.getDefault().getPreferenceStore();
 		final String base = store.getString(PreferenceConstants.P_BASE_URL);
 		final String model = store.getString(PreferenceConstants.P_MODEL);
-		double t = 0.1;
-		try {
-			t = Double.parseDouble(store.getString(PreferenceConstants.P_TEMPERATURE));
-		} catch (Exception ignore) {
-			// 기본 0.1
-		}
-		final double temperature = t;
+		final double temperature = CodeEdit.parseTemperature(store.getString(PreferenceConstants.P_TEMPERATURE), 0.1);
 		final Display display = shell.getDisplay();
 
 		Job job = new Job("Ollama 인라인 편집") {
@@ -127,18 +122,5 @@ public class InlineEditHandler extends AbstractHandler {
 		job.setUser(true);
 		job.schedule();
 		return null;
-	}
-
-	private static String fileExtension(ITextEditor te) {
-		try {
-			String name = te.getEditorInput().getName();
-			int dot = name.lastIndexOf('.');
-			if (dot >= 0 && dot < name.length() - 1) {
-				return name.substring(dot + 1);
-			}
-		} catch (Exception ignore) {
-			// 무시
-		}
-		return "";
 	}
 }

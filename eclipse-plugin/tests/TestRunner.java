@@ -60,6 +60,9 @@ public class TestRunner {
 		ck("ce: edit prompt", CodeEdit.buildEditPrompt("int x;","name→count","java").contains("name→count"));
 		ck("ce: fix prompt", CodeEdit.buildFixPrompt("int x=","';' expected","java").contains("';' expected"));
 		ck("ce: sys prompt", CodeEdit.editSystemPrompt().contains("코드 편집기"));
+		ck("ce: temp ok", CodeEdit.parseTemperature("0.3", 0.1) == 0.3);
+		ck("ce: temp bad->def", CodeEdit.parseTemperature("x", 0.2) == 0.2);
+		ck("ce: temp null->def", CodeEdit.parseTemperature(null, 0.2) == 0.2);
 	}
 
 	static void mentions() {
