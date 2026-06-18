@@ -31,7 +31,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 | **멀티 세션 관리** | ✅ | 대화 내용·히스토리를 세션별 저장, 툴바 **[세션] 드롭다운**으로 전환·새 세션·이름변경·**검색·내보내기(.md)**·삭제 |
 | **Agent 변경 검토 패널** | ✅ | Agent 실행 후 변경 파일 요약 + **2개 이상이면 검토 패널**에서 파일별 diff 확인·**선택 되돌리기** |
 | **run_command 콘솔 패널** | ✅ | Agent의 명령 실행 출력을 Eclipse **Console 뷰("Ollama Assist")** 로도 표시 |
-| **자동 검증 루프** | ✅ | 수정 후 빌드/Problems 자동 확인 → 실패 시 모델이 자가수정(최대 3회). **경고는 무시하고 오류(ERROR)만** 중복 제거·정리해 전달 |
+| **자동 검증 루프** | ✅ | 수정 후 빌드/Problems 자동 확인 → 실패 시 모델이 자가수정(**재시도 횟수 설정**, 0=끔). **오류(ERROR)만** 추려 **변경 파일 우선** 정렬, 테스트 실패 로그는 **실패/예외 줄만** 정제해 전달 |
 | **낮은 temperature** | ✅ | 코딩 안정성 위해 기본 0.2 (Preferences에서 조정) |
 | 한국어 응답 강제 | ✅ | 시스템 프롬프트 기본 내장(Preferences에서 변경) |
 | 서버/모델 설정 | ✅ | Window > Preferences > Ollama Assist |
@@ -48,7 +48,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 | `search_text` | 전체 프로젝트 문자열 검색(파일:줄) | - |
 | `semantic_search` | **코드베이스 의미 검색(RAG)** — 키워드가 정확치 않아도 의미가 가까운 코드를 찾음(색인 필요) | - |
 | `read_file` | 파일 내용 읽기(`start_line`/`end_line` 범위 지정 가능 — 큰 .xfdl 등) | - |
-| `apply_edit` | **부분 수정** — old_text→new_text 한 곳만 교체. old_text 가 정확히 안 맞아도 **줄 끝 공백·줄바꿈·들여쓰기 차이를 보정 매칭**(diff 미리보기) | ✅ |
+| `apply_edit` | **부분 수정** — old_text→new_text 교체(`all=true` 면 일치 전부). 정확히 안 맞아도 **줄 끝 공백·줄바꿈·들여쓰기 보정 매칭**(diff 미리보기) | ✅ |
 | `create_file` | 새 파일 생성 | ✅ |
 | `write_file` | 파일 전체 덮어쓰기 | ✅ |
 | `run_command` | 빌드/테스트 등 명령 실행 (**기본 비활성**) | ✅ |

@@ -69,6 +69,12 @@ public class OllamaAgent {
 
 	private static final int MAX_ITER = 25;
 	private static final int MAX_VERIFY = 3;
+	private int maxVerify = MAX_VERIFY;
+
+	/** 자동 검증 재시도 최대 횟수(환경설정에서 주입). 1 미만이면 검증 루프 비활성. */
+	public void setMaxVerify(int n) {
+		this.maxVerify = Math.max(0, n);
+	}
 	private static final int MAX_LIST = 400;
 	private static final int MAX_READ = 60000;
 	private static final int MAX_SEARCH = 100;
@@ -159,11 +165,11 @@ public class OllamaAgent {
 
 			if (toolCalls == null || toolCalls.isEmpty()) {
 				// 자동 검증 루프: 수정이 있었고 검증 수단이 있으면 빌드/오류를 확인해 실패 시 재수정
-				if (edited && verifyRounds < MAX_VERIFY && !isCancelled()) {
+				if (edited && verifyRounds < maxVerify && !isCancelled()) {
 					String verdict = autoVerify();
 					if (verdict != null) {
 						verifyRounds++;
-						log.progress("\n🔁 자동 검증 실패 — 수정 재시도 (" + verifyRounds + "/" + MAX_VERIFY + ")\n");
+						log.progress("\n🔁 자동 검증 실패 — 수정 재시도 (" + verifyRounds + "/" + maxVerify + ")\n");
 						edited = false;
 						messages.add(msg("user",
 								"자동 검증에서 문제가 발견되었습니다. 아래 내용을 분석해 코드를 수정하세요. "
@@ -272,7 +278,9 @@ public class OllamaAgent {
 		p.put("path", prop("string", "수정할 파일 경로"));
 		p.put("old_text", prop("string", "교체 대상이 되는, 파일 내에서 유일한 기존 텍스트(공백/들여쓰기 포함)"));
 		p.put("new_text", prop("string", "대체할 새 텍스트"));
-		tools.add(func("apply_edit", "파일에서 old_text 를 찾아 new_text 로 한 번만 교체(부분 수정). 사용자 확인 후 적용",
+		p.put("all", prop("boolean", "true 면 일치하는 모든 곳을 교체(정확 일치만). 기본 false=한 곳"));
+		tools.add(func("apply_edit",
+				"파일에서 old_text 를 찾아 new_text 로 교체(부분 수정). 기본은 한 곳, all=true 면 전체. 사용자 확인 후 적용",
 				p, Arrays.asList("path", "old_text", "new_text")));
 
 		p = new LinkedHashMap<>();
@@ -355,7 +363,7 @@ public class OllamaAgent {
 				return createFile(asString(args.get("path")), asString(args.get("content")));
 			case "apply_edit":
 				return applyEdit(asString(args.get("path")), asString(args.get("old_text")),
-						asString(args.get("new_text")));
+						asString(args.get("new_text")), asBool(args.get("all")));
 			case "write_file":
 				return writeFile(asString(args.get("path")), asString(args.get("content")));
 			case "run_command":
@@ -537,7 +545,7 @@ public class OllamaAgent {
 		return "파일 생성 완료: " + rel + " (" + content.length() + " chars)";
 	}
 
-	private String applyEdit(String rel, String oldText, String newText) throws IOException {
+	private String applyEdit(String rel, String oldText, String newText, boolean all) throws IOException {
 		if (oldText == null || oldText.isEmpty()) {
 			return "old_text 가 필요합니다";
 		}
@@ -549,12 +557,30 @@ public class OllamaAgent {
 			return "파일이 없습니다: " + rel;
 		}
 		String content = read(f);
+
+		// all=true: 정확 일치 전부 교체
+		if (all) {
+			int count = EditMatch.countExact(content, oldText);
+			if (count == 0) {
+				return "old_text 를 파일에서 찾지 못했습니다(all 교체는 정확 일치만 지원). read_file 로 확인하세요.";
+			}
+			String updated = content.replace(oldText, newText);
+			if (!confirm.ask("Ollama Agent — 다중 수정 확인",
+					"파일: " + rel + "  (" + count + "곳 일괄 교체)\n\n" + TextDiff.unified(oldText, newText))) {
+				return "사용자가 수정을 취소했습니다: " + rel;
+			}
+			write(f, updated);
+			edited = true;
+			appliedChanges.add(new String[] { rel, content, updated });
+			return "부분 수정 완료: " + rel + " (" + count + "곳 교체)";
+		}
+
 		EditMatch.Result m = EditMatch.find(content, oldText);
 		if (m == null) {
 			return "old_text 를 파일에서 찾지 못했습니다. read_file 로 정확한 내용(공백/들여쓰기 포함)을 확인하세요.";
 		}
 		if ("exact".equals(m.mode) && EditMatch.hasDuplicateExact(content, oldText)) {
-			return "old_text 가 여러 곳과 일치합니다. 더 길고 유일한 범위를 지정하세요.";
+			return "old_text 가 여러 곳과 일치합니다. 더 길고 유일한 범위를 지정하거나 all=true 로 일괄 교체하세요.";
 		}
 		String matched = content.substring(m.start, m.end);
 		String updated = content.substring(0, m.start) + newText + content.substring(m.end);
@@ -639,16 +665,31 @@ public class OllamaAgent {
 			try {
 				log.progress("\n🔎 검증 실행: " + verifyCommand + "\n");
 				String out = execShell(verifyCommand);
-				return out.startsWith("exit=0") ? null : "검증 명령 실패:\n" + out;
+				if (out.startsWith("exit=0")) {
+					return null;
+				}
+				String focused = VerifyReport.focusTestLog(out, 40); // 실패/예외 줄만 정제
+				return "검증 명령 실패(아래 실패 내용을 해결하세요):\n" + (focused != null ? focused : out);
 			} catch (Exception e) {
 				return "검증 명령 오류: " + e.getMessage();
 			}
 		}
 		if (env != null) {
 			log.progress("\n🔎 Problems 검증 중…\n");
-			return VerifyReport.focusErrors(env.getProblems(), 30); // 오류만, 없으면 null(통과)
+			return VerifyReport.focusErrors(env.getProblems(), 30, changedHints()); // 변경 파일 우선, 오류만
 		}
 		return null;
+	}
+
+	/** 이번 실행에서 변경한 파일들의 파일명(검증 오류 우선순위 힌트). */
+	private java.util.Set<String> changedHints() {
+		java.util.Set<String> out = new java.util.LinkedHashSet<>();
+		for (String[] c : appliedChanges) {
+			String rel = c[0];
+			int slash = Math.max(rel.lastIndexOf('/'), rel.lastIndexOf('\\'));
+			out.add(slash >= 0 ? rel.substring(slash + 1) : rel);
+		}
+		return out;
 	}
 
 	private String controlServer(String name, boolean start) {
@@ -715,6 +756,13 @@ public class OllamaAgent {
 
 	private static String asString(Object o) {
 		return o == null ? null : o.toString();
+	}
+
+	private static boolean asBool(Object o) {
+		if (o instanceof Boolean) {
+			return (Boolean) o;
+		}
+		return o != null && "true".equalsIgnoreCase(o.toString());
 	}
 
 	private static int asInt(Object o) {

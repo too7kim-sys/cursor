@@ -163,6 +163,8 @@ public class TestRunner {
 		ck("em: not found", EditMatch.find("abc", "xyz") == null);
 		ck("em: dup exact", EditMatch.hasDuplicateExact("a x a x", "x"));
 		ck("em: no dup", !EditMatch.hasDuplicateExact("a x", "x"));
+		ck("em: countExact", EditMatch.countExact("a x a x a", "x") == 2);
+		ck("em: countExact none", EditMatch.countExact("abc", "z") == 0);
 	}
 
 	static void verifyReport() {
@@ -173,5 +175,15 @@ public class TestRunner {
 		ck("vr: no errors null", VerifyReport.focusErrors("오류 0개, 경고 2개\nWARN x\nWARN y", 10) == null);
 		ck("vr: null", VerifyReport.focusErrors(null, 10) == null);
 		ck("vr: dedupe", VerifyReport.focusErrors("ERROR A:1: x\nERROR A:1: x", 10).contains("1개"));
+		// 변경 파일 우선 정렬
+		String p2 = "오류 2개\nERROR /p/Other.java:1: a\nERROR /p/Foo.java:2: b";
+		String fr = VerifyReport.focusErrors(p2, 10, java.util.Arrays.asList("Foo.java"));
+		ck("vr: changed first", fr.indexOf("Foo.java") < fr.indexOf("Other.java"));
+		// 테스트 로그 정제
+		String log = "compiling...\nTests run: 5, Failures: 1\nAssertionError: expected 3 but was 4\n    at Foo.test(Foo.java:9)";
+		String tl = VerifyReport.focusTestLog(log, 10);
+		ck("vr: testlog keeps fail", tl != null && tl.contains("Tests run") && tl.contains("AssertionError"));
+		ck("vr: testlog drops noise", tl != null && !tl.contains("compiling..."));
+		ck("vr: testlog none null", VerifyReport.focusTestLog("all good\nclean", 10) == null);
 	}
 }

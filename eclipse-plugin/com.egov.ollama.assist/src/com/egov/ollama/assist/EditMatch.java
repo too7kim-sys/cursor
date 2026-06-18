@@ -46,6 +46,20 @@ public final class EditMatch {
 		return i >= 0 && content.indexOf(oldText, i + 1) >= 0;
 	}
 
+	/** oldText 의 정확 일치 횟수(다중 교체용). */
+	public static int countExact(String content, String oldText) {
+		if (content == null || oldText == null || oldText.isEmpty()) {
+			return 0;
+		}
+		int n = 0;
+		int i = 0;
+		while ((i = content.indexOf(oldText, i)) >= 0) {
+			n++;
+			i += oldText.length();
+		}
+		return n;
+	}
+
 	private static Result lineMatch(String content, String oldText, boolean fullTrim) {
 		List<int[]> lines = lineSpans(content);
 		String[] rawOld = oldText.split("\n", -1);

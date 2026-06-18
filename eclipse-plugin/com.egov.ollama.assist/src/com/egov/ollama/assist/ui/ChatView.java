@@ -1149,6 +1149,13 @@ public class ChatView extends ViewPart {
 		final String embedModel = store.getString(PreferenceConstants.P_EMBED_MODEL);
 		final double temperature = parseTemp(store.getString(PreferenceConstants.P_TEMPERATURE));
 		final String verifyCmd = store.getString(PreferenceConstants.P_VERIFY_CMD);
+		int vr = 3;
+		try {
+			vr = Integer.parseInt(store.getString(PreferenceConstants.P_VERIFY_ROUNDS).trim());
+		} catch (Exception ignore) {
+			// 기본 3
+		}
+		final int verifyRounds = vr;
 
 		final AtomicBoolean cancel = new AtomicBoolean(false);
 		currentCancel = cancel;
@@ -1181,6 +1188,7 @@ public class ChatView extends ViewPart {
 							cancel::get,
 							new EclipseEnvironment(),
 							retriever);
+					agent.setMaxVerify(verifyRounds);
 					agent.run(userPrompt);
 					WorkspaceUtil.refresh();
 					reviewAgentChangesAsync(agent.getAppliedChanges(), root);
