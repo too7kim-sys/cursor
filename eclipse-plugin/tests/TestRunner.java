@@ -18,6 +18,7 @@ public class TestRunner {
 		sessionStore();
 		symbols();
 		problems();
+		changeParser();
 		System.out.println("\n=== PASS=" + pass + " FAIL=" + fail + " ===");
 		if (fail > 0) System.exit(1);
 	}
@@ -119,5 +120,17 @@ public class TestRunner {
 		ck("pb: dedupe", f.split("\n").length == 2);
 		ck("pb: errorCount", Problems.errorCount(items) == 2);
 		ck("pb: empty", Problems.format(new ArrayList<>()).isEmpty());
+	}
+
+	static void changeParser() {
+		List<ChangeParser.Change> c1 = ChangeParser.parse("```java src/Foo.java\nint x=1;\n```");
+		ck("cp: fence info path", c1.size()==1 && c1.get(0).path.equals("src/Foo.java") && c1.get(0).content.equals("int x=1;"));
+		ck("cp: label path", ChangeParser.parse("파일: src/Bar.java\n```\nB();\n```").get(0).path.equals("src/Bar.java"));
+		ck("cp: bold path", ChangeParser.parse("**a/b/C.java**\n```\nC\n```").get(0).path.equals("a/b/C.java"));
+		ck("cp: no path ignored", ChangeParser.parse("설명\n```\nplain\n```").isEmpty());
+		List<ChangeParser.Change> c5 = ChangeParser.parse("File: x/A.java\n```\nA\n```\n설명\nFile: y/B.java\n```\nB\n```");
+		ck("cp: multiple", c5.size()==2 && c5.get(1).path.equals("y/B.java"));
+		ck("cp: lang only ignored", ChangeParser.parse("```python\nprint(1)\n```").isEmpty());
+		ck("cp: prose clears", ChangeParser.parse("src/Z.java\n이건 설명\n```\nz\n```").isEmpty());
 	}
 }

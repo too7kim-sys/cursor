@@ -47,6 +47,7 @@ import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.texteditor.ITextEditor;
 
 import com.egov.ollama.assist.Activator;
+import com.egov.ollama.assist.ChangeParser;
 import com.egov.ollama.assist.CodebaseIndex;
 import com.egov.ollama.assist.EclipseEnvironment;
 import com.egov.ollama.assist.FileProposals;
@@ -249,6 +250,14 @@ public class ChatView extends ViewPart {
 		};
 		applyAction.setToolTipText("마지막 코드블록을 현재 편집기에 적용(선택 영역 교체 또는 커서 삽입, diff 확인)");
 		tb.add(applyAction);
+		org.eclipse.jface.action.Action applyChangesAction = new org.eclipse.jface.action.Action("변경적용") {
+			@Override
+			public void run() {
+				applyChangesFromChat();
+			}
+		};
+		applyChangesAction.setToolTipText("답변의 파일 지정 코드블록들을 모아 멀티파일 일괄 적용(검토 패널)");
+		tb.add(applyChangesAction);
 		org.eclipse.jface.action.Action darkAction = new org.eclipse.jface.action.Action("다크",
 				org.eclipse.jface.action.IAction.AS_CHECK_BOX) {
 			@Override
@@ -438,6 +447,56 @@ public class ChatView extends ViewPart {
 		}
 		com.egov.ollama.assist.handlers.EditorPreview.apply(output.getShell(), doc, te, offset, length, original, code,
 				"에디터 적용");
+	}
+
+	/** 답변에서 파일 지정 코드블록들을 모아 멀티파일 검토 패널로 일괄 적용. 없으면 단일 블록 에디터 적용으로 대체. */
+	private void applyChangesFromChat() {
+		if (output == null || output.isDisposed()) {
+			return;
+		}
+		java.util.List<ChangeParser.Change> changes = ChangeParser.parse(output.getText());
+		if (changes.isEmpty()) {
+			applyLastCodeToEditor();
+			return;
+		}
+		File root = selectedProjectDir();
+		if (root == null) {
+			MessageDialog.openInformation(output.getShell(), "변경 적용", "먼저 대상 프로젝트를 선택하세요.");
+			return;
+		}
+		ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), changes, root);
+		if (dlg.open() != org.eclipse.jface.window.Window.OK) {
+			return;
+		}
+		java.util.List<ChangeParser.Change> accepted = dlg.getAccepted();
+		int ok = 0;
+		for (ChangeParser.Change ch : accepted) {
+			if (writeProjectFile(root, ch.path, ch.content)) {
+				ok++;
+			}
+		}
+		WorkspaceUtil.refresh();
+		cachedFiles = null; // 새 파일 반영되도록 캐시 무효화
+		cachedSymbols = null;
+		append("\n✅ 멀티파일 변경 적용: " + ok + "/" + accepted.size() + " 파일\n");
+	}
+
+	private boolean writeProjectFile(File root, String rel, String content) {
+		try {
+			File f = new File(root, rel);
+			if (!f.getCanonicalPath().startsWith(root.getCanonicalPath())) {
+				return false; // 프로젝트 밖 경로 차단
+			}
+			File parent = f.getParentFile();
+			if (parent != null) {
+				parent.mkdirs();
+			}
+			java.nio.file.Files.write(f.toPath(), content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			return true;
+		} catch (Exception e) {
+			Activator.logError("파일 쓰기 실패: " + rel, e);
+			return false;
+		}
 	}
 
 	/** 입력의 @파일/@선택 멘션을 컨텍스트(코드블록)로 첨부한 프롬프트를 반환. */
