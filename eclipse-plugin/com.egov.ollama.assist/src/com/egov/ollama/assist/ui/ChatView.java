@@ -9,10 +9,17 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.dnd.Clipboard;
+import org.eclipse.swt.dnd.TextTransfer;
+import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
@@ -27,6 +34,7 @@ import com.egov.ollama.assist.Activator;
 import com.egov.ollama.assist.CodebaseIndex;
 import com.egov.ollama.assist.EclipseEnvironment;
 import com.egov.ollama.assist.GitUtil;
+import com.egov.ollama.assist.MarkdownScanner;
 import com.egov.ollama.assist.OllamaAgent;
 import com.egov.ollama.assist.OllamaClient;
 import com.egov.ollama.assist.SlashCommands;
@@ -58,6 +66,11 @@ public class ChatView extends ViewPart {
 	private volatile File indexRoot;
 	private final java.util.List<Object> history = new java.util.ArrayList<>();
 	private static final int MAX_HISTORY = 16;
+	private boolean dark;
+	private Color codeBgLight;
+	private Color codeBgDark;
+	private Color darkBg;
+	private Color darkFg;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -167,6 +180,105 @@ public class ChatView extends ViewPart {
 				saveConversation();
 			}
 		});
+		tb.add(new org.eclipse.jface.action.Action("코드복사") {
+			@Override
+			public void run() {
+				copyLastCode();
+			}
+		});
+		tb.add(new org.eclipse.jface.action.Action("다크") {
+			@Override
+			public void run() {
+				toggleDark();
+			}
+		});
+
+		// 구문강조용 색상 생성 + 정리
+		Color disp1 = new Color(parent.getDisplay(), 240, 240, 240);
+		Color disp2 = new Color(parent.getDisplay(), 55, 55, 60);
+		darkBg = new Color(parent.getDisplay(), 30, 30, 34);
+		darkFg = new Color(parent.getDisplay(), 220, 220, 220);
+		codeBgLight = disp1;
+		codeBgDark = disp2;
+		output.addDisposeListener(e -> {
+			codeBgLight.dispose();
+			codeBgDark.dispose();
+			darkBg.dispose();
+			darkFg.dispose();
+		});
+	}
+
+	// ===================== 표시(구문강조/테마/복사) =====================
+
+	/** 출력 전체를 다시 스캔해 코드블록/굵게/헤더 스타일을 적용. */
+	private void restyle() {
+		if (output == null || output.isDisposed()) {
+			return;
+		}
+		output.setStyleRanges(new StyleRange[0]);
+		String text = output.getText();
+		Font mono = JFaceResources.getTextFont();
+		Color cbg = dark ? codeBgDark : codeBgLight;
+		for (MarkdownScanner.Span sp : MarkdownScanner.scan(text)) {
+			int len = Math.min(sp.length, text.length() - sp.start);
+			if (len <= 0) {
+				continue;
+			}
+			StyleRange r = new StyleRange();
+			r.start = sp.start;
+			r.length = len;
+			switch (sp.kind) {
+			case CODE:
+				r.font = mono;
+				r.background = cbg;
+				break;
+			case HEADER:
+			case BOLD:
+				r.fontStyle = SWT.BOLD;
+				break;
+			default:
+				break;
+			}
+			output.setStyleRange(r);
+		}
+	}
+
+	private void restyleAsync() {
+		Display d = Display.getDefault();
+		if (d != null && !d.isDisposed()) {
+			d.asyncExec(this::restyle);
+		}
+	}
+
+	private void toggleDark() {
+		dark = !dark;
+		if (output != null && !output.isDisposed()) {
+			output.setBackground(dark ? darkBg : null);
+			output.setForeground(dark ? darkFg : null);
+		}
+		if (input != null && !input.isDisposed()) {
+			input.setBackground(dark ? darkBg : null);
+			input.setForeground(dark ? darkFg : null);
+		}
+		restyle();
+	}
+
+	private void copyLastCode() {
+		if (output == null || output.isDisposed()) {
+			return;
+		}
+		String code = MarkdownScanner.lastCodeBlock(output.getText());
+		if (code == null || code.isEmpty()) {
+			append("\n[안내] 복사할 코드블록이 없습니다.\n");
+			return;
+		}
+		Clipboard cb = new Clipboard(output.getDisplay());
+		try {
+			cb.setContents(new Object[] { code }, new Transfer[] { TextTransfer.getInstance() });
+		} finally {
+			cb.dispose();
+		}
+		append("\n📋 마지막 코드블록을 클립보드에 복사했습니다.\n");
 	}
 
 	/** 대화 내용을 파일로 저장. */
@@ -565,6 +677,7 @@ public class ChatView extends ViewPart {
 		currentCancel = null;
 		setSendEnabledAsync(true);
 		setStopEnabledAsync(false);
+		restyleAsync();
 	}
 
 	private void append(String s) {

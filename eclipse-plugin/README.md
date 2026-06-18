@@ -155,6 +155,15 @@ eclipse-plugin/com.egov.ollama.assist/
 
 ---
 
+## UI/UX (플러그인 현대화 + 앱 UI 생성)
+
+- **채팅창 현대화**: 코드블록 구문강조(등폭+배경)·헤더/굵게 스타일, 툴바 **[코드복사]**(마지막 코드블록 클립보드), **[다크]** 테마 토글
+- **앱 UI 생성 지원(폐쇄망)**: 로컬 모델이 모르는 최신 트렌드/프레임워크 지식을 **지식팩(.md)** 으로 주입해 RAG로 활용
+  - `knowledge/` 의 [ui-ux-trends](knowledge/ui-ux-trends.md) · [nexacro-patterns](knowledge/nexacro-patterns.md) · [websquare-patterns](knowledge/websquare-patterns.md) 를 **대상 프로젝트의 `.ollama-assist/knowledge/`** 에 복사 → [색인]
+  - **`/ui <설명>`**: 현대적 UI/UX 원칙 + 지식팩 + 프로젝트 기존 패턴을 반영해 화면/컴포넌트 구현
+  - **`/xfdl <XML>`**: 넥사크로/웹스퀘어 화면 분석·수정(XML 구조 보존)
+  - 사내 규칙은 `AGENTS.md` 에 적어두면 자동 적용
+
 ## 대화·워크플로 기능
 
 - **연속 대화(멀티턴)**: 채팅은 이전 대화 맥락을 기억합니다("방금 그거 더 간단히" 가능). `/clear` 또는 툴바 [지우기]로 새 대화 시작.
@@ -167,6 +176,7 @@ eclipse-plugin/com.egov.ollama.assist/
   | `/doc` | 주석/Javadoc 추가 |
   | `/egov <기능명>` | 전자정부 DAO/Service/Controller/Mapper 생성(Agent 권장) |
   | `/xfdl <XML>` | 넥사크로/웹스퀘어 화면 분석·수정 |
+  | `/ui <설명>` | 현대적 UI/UX 화면·컴포넌트 구현(지식팩+RAG) |
   | `/commit` | 스테이징된 변경(git diff)으로 커밋 메시지 생성 |
   | `/clear`, `/help` | 대화 지우기 / 도움말 |
 - **편집기 우클릭 메뉴**: 코드 설명·리팩터링·**테스트 생성·주석 생성·코드 리뷰**·선택 코드 보내기

@@ -57,6 +57,13 @@ public final class SlashCommands {
 		case "/xfdl":
 			return "다음은 넥사크로/웹스퀘어 화면 정의(XML)다. 요청대로 분석/수정하되 XML 구조와 속성 형식을 "
 					+ "보존하고, 디자이너에서 다시 열 수 있도록 유효한 XML 을 유지할 것:\n\n" + body;
+		case "/ui":
+			return "현대적 UI/UX 모범사례를 반영해 '" + body + "' 화면/컴포넌트를 구현해줘.\n"
+					+ "원칙: 접근성(키보드/라벨/대비), 반응형, 일관된 디자인 토큰(색/간격/타이포), "
+					+ "명확한 상태 표시(로딩 스켈레톤·빈 상태·에러·성공), 적절한 피드백/마이크로인터랙션, 과한 장식 배제.\n"
+					+ "절차: 먼저 search_text/semantic_search 로 프로젝트의 기존 화면·명명 규칙과 (있다면) UI 지식팩"
+					+ "(.ollama-assist/knowledge 또는 프로젝트 내 UI 가이드)을 확인하고 그 규칙을 우선 적용할 것. "
+					+ "넥사크로/웹스퀘어 프로젝트면 해당 프레임워크 컴포넌트와 XML 구조를 사용하고 디자이너 호환 형식을 유지할 것.";
 		default:
 			return null;
 		}
@@ -71,6 +78,7 @@ public final class SlashCommands {
 				+ "  /doc <코드>      — 주석/Javadoc 추가\n"
 				+ "  /egov <기능명>   — 전자정부 DAO/Service/Controller/Mapper 생성(Agent 모드 권장)\n"
 				+ "  /xfdl <XML>      — 넥사크로/웹스퀘어 화면 분석·수정\n"
+				+ "  /ui <설명>       — 현대적 UI/UX 화면·컴포넌트 구현(지식팩+RAG 활용)\n"
 				+ "  /commit          — 스테이징된 변경(git diff)으로 커밋 메시지 생성\n"
 				+ "  /clear           — 대화 지우기(새 대화)\n"
 				+ "  /help            — 이 도움말\n"
