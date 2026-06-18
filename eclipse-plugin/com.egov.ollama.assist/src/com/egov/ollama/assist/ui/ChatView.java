@@ -506,11 +506,9 @@ public class ChatView extends ViewPart {
 			}
 		}
 		final java.util.List<String[]> distinct = new java.util.ArrayList<>(map.values());
-		if (!root.equals(historyRoot)) {
-			editHistory.clear(); // 프로젝트가 바뀌면 히스토리 초기화
-			historyRoot = root;
-		}
+		ensureHistory(root); // 프로젝트별 디스크 히스토리 로드(다르면 교체)
 		editHistory.push(label, distinct); // 다단계 되돌리기용 체크포인트
+		saveHistory();
 		final int index = editHistory.size() - 1;
 		StringBuilder sb = new StringBuilder("\n📝 에이전트가 변경한 파일 " + distinct.size() + "개 (체크포인트 #"
 				+ (index + 1) + "):\n");
@@ -555,6 +553,7 @@ public class ChatView extends ViewPart {
 		}
 		if (n > 0) {
 			editHistory.truncateTo(index); // 되돌린 시점 이후 기록 제거
+			saveHistory();
 			WorkspaceUtil.refresh();
 			cachedFiles = null;
 			cachedSymbols = null;
@@ -564,6 +563,7 @@ public class ChatView extends ViewPart {
 
 	/** 툴바 [되돌리기]: 체크포인트를 골라 그 시점 이후를 되돌린다(다단계). */
 	private void revertLastAgentChanges() {
+		ensureHistory(selectedProjectDir()); // 재시작 후에도 디스크 히스토리 사용
 		int size = editHistory.size();
 		if (size == 0 || historyRoot == null) {
 			append("\n[안내] 되돌릴 에이전트 변경 기록이 없습니다.\n");
@@ -589,6 +589,52 @@ public class ChatView extends ViewPart {
 		sel.setElements(indices);
 		if (sel.open() == org.eclipse.jface.window.Window.OK && sel.getFirstResult() instanceof Integer) {
 			showRevertFrom((Integer) sel.getFirstResult());
+		}
+	}
+
+	/** 프로젝트별 되돌리기 히스토리 파일(상태 폴더). */
+	private File historyFile(File root) {
+		try {
+			String key = Integer.toHexString(root.getAbsolutePath().hashCode());
+			return new File(Activator.getDefault().getStateLocation().toFile(), "history_" + key + ".json");
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/** root 에 해당하는 히스토리를 디스크에서 로드(이미 같은 root 면 그대로). */
+	private void ensureHistory(File root) {
+		if (root == null || root.equals(historyRoot)) {
+			return;
+		}
+		historyRoot = root;
+		File f = historyFile(root);
+		try {
+			if (f != null && f.isFile()) {
+				editHistory.loadJson(new String(java.nio.file.Files.readAllBytes(f.toPath()),
+						java.nio.charset.StandardCharsets.UTF_8));
+			} else {
+				editHistory.loadJson("");
+			}
+		} catch (Exception e) {
+			editHistory.loadJson("");
+			Activator.logError("되돌리기 히스토리 로드 실패", e);
+		}
+	}
+
+	private void saveHistory() {
+		if (historyRoot == null) {
+			return;
+		}
+		File f = historyFile(historyRoot);
+		if (f == null) {
+			return;
+		}
+		try {
+			java.nio.file.Files.write(f.toPath(),
+					editHistory.toJson().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		} catch (Exception e) {
+			Activator.logError("되돌리기 히스토리 저장 실패", e);
 		}
 	}
 

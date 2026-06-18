@@ -18,8 +18,12 @@ public final class EditHistory {
 		public final List<String[]> edits;
 
 		Checkpoint(String label, List<String[]> edits) {
+			this(label, edits, System.currentTimeMillis());
+		}
+
+		Checkpoint(String label, List<String[]> edits, long time) {
 			this.label = label == null ? "" : label;
-			this.time = System.currentTimeMillis();
+			this.time = time;
 			this.edits = edits;
 		}
 
@@ -66,6 +70,75 @@ public final class EditHistory {
 	public void truncateTo(int index) {
 		while (cps.size() > index && cps.size() > 0) {
 			cps.remove(cps.size() - 1);
+		}
+	}
+
+	/** 디스크 영속화용 JSON 직렬화. */
+	public String toJson() {
+		List<Object> arr = new ArrayList<>();
+		for (Checkpoint cp : cps) {
+			Map<String, Object> m = new LinkedHashMap<>();
+			m.put("label", cp.label);
+			m.put("time", cp.time);
+			List<Object> es = new ArrayList<>();
+			for (String[] e : cp.edits) {
+				List<Object> t = new ArrayList<>();
+				t.add(e[0]);
+				t.add(e[1]);
+				t.add(e[2]);
+				es.add(t);
+			}
+			m.put("edits", es);
+			arr.add(m);
+		}
+		return Json.write(arr);
+	}
+
+	/** JSON 에서 복원(기존 내용은 대체). */
+	public void loadJson(String json) {
+		cps.clear();
+		if (json == null || json.trim().isEmpty()) {
+			return;
+		}
+		Object parsed = Json.parse(json);
+		if (!(parsed instanceof List)) {
+			return;
+		}
+		for (Object o : (List<?>) parsed) {
+			if (!(o instanceof Map)) {
+				continue;
+			}
+			Map<?, ?> m = (Map<?, ?>) o;
+			List<String[]> edits = new ArrayList<>();
+			Object editsO = m.get("edits");
+			if (editsO instanceof List) {
+				for (Object eo : (List<?>) editsO) {
+					if (eo instanceof List) {
+						List<?> t = (List<?>) eo;
+						if (t.size() >= 3) {
+							edits.add(new String[] { str(t.get(0)), str(t.get(1)), str(t.get(2)) });
+						}
+					}
+				}
+			}
+			if (!edits.isEmpty()) {
+				cps.add(new Checkpoint(str(m.get("label")), edits, asLong(m.get("time"))));
+			}
+		}
+	}
+
+	private static String str(Object o) {
+		return o == null ? "" : o.toString();
+	}
+
+	private static long asLong(Object o) {
+		if (o instanceof Number) {
+			return ((Number) o).longValue();
+		}
+		try {
+			return o == null ? 0L : Long.parseLong(o.toString().trim());
+		} catch (Exception e) {
+			return 0L;
 		}
 	}
 }

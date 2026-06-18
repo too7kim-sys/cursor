@@ -204,5 +204,22 @@ public class TestRunner {
 		ck("eh: truncate", h.size()==1 && h.get(0).label.equals("r1"));
 		h.push("empty", new ArrayList<>());
 		ck("eh: empty not pushed", h.size()==1);
+		// JSON 영속화 라운드트립
+		EditHistory h2 = new EditHistory();
+		List<String[]> e1 = new ArrayList<>(); e1.add(new String[]{"X.java","x0","x1"}); e1.add(new String[]{"Y.java","","y1"});
+		h2.push("작업1", e1);
+		EditHistory h3 = new EditHistory();
+		h3.loadJson(h2.toJson());
+		ck("eh: json size", h3.size()==1);
+		ck("eh: json label", h3.get(0).label.equals("작업1"));
+		ck("eh: json restore", "x0".equals(h3.restoreStateFrom(0).get("X.java")) && h3.get(0).fileCount()==2);
+		ck("eh: load empty", roundtripEmpty());
+	}
+
+	static boolean roundtripEmpty() {
+		EditHistory h = new EditHistory();
+		h.loadJson("");
+		h.loadJson(null);
+		return h.size()==0;
 	}
 }
