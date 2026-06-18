@@ -54,6 +54,9 @@ public class OllamaPreferencePage extends FieldEditorPreferencePage implements I
 		addField(new BooleanFieldEditor(PreferenceConstants.P_AUTO_GHOST,
 				"자동 고스트 완성 — 타이핑을 멈추면 자동으로 제안 표시 (실험적, 로컬 모델 지연 주의)",
 				getFieldEditorParent()));
+		addField(new BooleanFieldEditor(PreferenceConstants.P_INLINE_PREVIEW,
+				"인라인 편집/오류수정 변경을 에디터에 직접 표시 후 확인 (끄면 별도 diff 창)",
+				getFieldEditorParent()));
 	}
 
 	@Override

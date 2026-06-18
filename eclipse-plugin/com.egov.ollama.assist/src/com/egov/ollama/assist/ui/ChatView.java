@@ -21,7 +21,6 @@ import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.ITextSelection;
 import org.eclipse.jface.viewers.ISelection;
-import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.StyleRange;
 import org.eclipse.swt.custom.StyledText;
@@ -58,7 +57,7 @@ import com.egov.ollama.assist.OllamaAgent;
 import com.egov.ollama.assist.OllamaClient;
 import com.egov.ollama.assist.SessionStore;
 import com.egov.ollama.assist.SlashCommands;
-import com.egov.ollama.assist.TextDiff;
+import com.egov.ollama.assist.SymbolIndex;
 import com.egov.ollama.assist.WorkspaceUtil;
 import com.egov.ollama.assist.preferences.PreferenceConstants;
 
@@ -100,6 +99,8 @@ public class ChatView extends ViewPart {
 	private String sessionName = "대화 1";
 	private java.util.List<String> cachedFiles;
 	private File cachedFilesRoot;
+	private java.util.Map<String, String> cachedSymbols;
+	private File cachedSymbolsRoot;
 
 	@Override
 	public void createPartControl(Composite parent) {
@@ -362,11 +363,18 @@ public class ChatView extends ViewPart {
 		restyle();
 	}
 
-	private void copyLastCode() {
+	/** 캐럿이 코드블록 안이면 그 블록, 아니면 마지막 코드블록을 반환. */
+	private String currentCodeBlock() {
 		if (output == null || output.isDisposed()) {
-			return;
+			return null;
 		}
-		String code = MarkdownScanner.lastCodeBlock(output.getText());
+		String text = output.getText();
+		String code = MarkdownScanner.codeBlockAt(text, output.getCaretOffset());
+		return code != null ? code : MarkdownScanner.lastCodeBlock(text);
+	}
+
+	private void copyLastCode() {
+		String code = currentCodeBlock();
 		if (code == null || code.isEmpty()) {
 			append("\n[안내] 복사할 코드블록이 없습니다.\n");
 			return;
@@ -377,7 +385,7 @@ public class ChatView extends ViewPart {
 		} finally {
 			cb.dispose();
 		}
-		append("\n📋 마지막 코드블록을 클립보드에 복사했습니다.\n");
+		append("\n📋 코드블록을 클립보드에 복사했습니다.\n");
 	}
 
 	/** 대화 내용을 파일로 저장. */
@@ -401,9 +409,9 @@ public class ChatView extends ViewPart {
 
 	// ===================== 에디터 적용 / @멘션 / 세션 =====================
 
-	/** 마지막 코드블록을 활성 편집기에 적용(선택 영역 교체 또는 커서 삽입, diff 확인). */
+	/** 캐럿 위치(또는 마지막) 코드블록을 활성 편집기에 적용(선택 영역 교체/커서 삽입). */
 	private void applyLastCodeToEditor() {
-		String code = MarkdownScanner.lastCodeBlock(output.getText());
+		String code = currentCodeBlock();
 		if (code == null || code.isEmpty()) {
 			append("\n[안내] 적용할 코드블록이 없습니다.\n");
 			return;
@@ -428,21 +436,8 @@ public class ChatView extends ViewPart {
 		} catch (BadLocationException e) {
 			return;
 		}
-		DiffConfirmDialog diff = new DiffConfirmDialog(output.getShell(),
-				length > 0 ? "에디터 적용 — 선택 영역 교체" : "에디터 적용 — 커서 위치 삽입",
-				TextDiff.unified(original, code));
-		if (diff.open() != Window.OK) {
-			return;
-		}
-		try {
-			if (offset + length <= doc.getLength()) {
-				doc.replace(offset, length, code);
-				te.selectAndReveal(offset, code.length());
-				append("\n✅ 코드블록을 편집기에 적용했습니다.\n");
-			}
-		} catch (BadLocationException e) {
-			append("\n[적용 실패] " + e.getMessage() + "\n");
-		}
+		com.egov.ollama.assist.handlers.EditorPreview.apply(output.getShell(), doc, te, offset, length, original, code,
+				"에디터 적용");
 	}
 
 	/** 입력의 @파일/@선택 멘션을 컨텍스트(코드블록)로 첨부한 프롬프트를 반환. */
@@ -462,6 +457,19 @@ public class ChatView extends ViewPart {
 				String content = readProjectFile(name);
 				if (content != null) {
 					ctx.append("\n[@").append(name).append("]\n```\n").append(content).append("\n```\n");
+				} else {
+					// 파일이 아니면 심볼로 간주: 정의가 있는 파일의 주변 스니펫 첨부
+					String rel = projectSymbols().get(name);
+					String fc = rel == null ? null : readProjectFile(rel);
+					if (fc != null) {
+						int line = SymbolIndex.defLine(fc, name);
+						String snip = line >= 0 ? SymbolIndex.snippet(fc, line, 25) : fc;
+						if (snip.length() > 4000) {
+							snip = snip.substring(0, 4000) + "\n...(생략)";
+						}
+						ctx.append("\n[@").append(name).append(" — ").append(rel).append("]\n```\n").append(snip)
+								.append("\n```\n");
+					}
 				}
 			}
 		}
@@ -661,8 +669,12 @@ public class ChatView extends ViewPart {
 			if (Mentions.SELECTION.startsWith(token.toLowerCase())) {
 				props.add(new ContentProposal("selection", "@selection (현재 편집기 선택)", "현재 편집기에서 선택한 코드를 첨부"));
 			}
-			for (String p : FileProposals.match(projectFiles(), token, 50)) {
+			for (String p : FileProposals.match(projectFiles(), token, 40)) {
 				props.add(new ContentProposal(p, p, null));
+			}
+			java.util.Map<String, String> syms = projectSymbols();
+			for (String s : FileProposals.match(new java.util.ArrayList<>(syms.keySet()), token, 20)) {
+				props.add(new ContentProposal(s, s + "  (심볼)", "심볼 정의: " + syms.get(s)));
 			}
 			return props.toArray(new IContentProposal[0]);
 		};
@@ -701,6 +713,51 @@ public class ChatView extends ViewPart {
 		cachedFiles = list;
 		cachedFilesRoot = root;
 		return list;
+	}
+
+	/** 심볼→상대경로 맵(클래스/메서드/함수 정의 위치). 최초 호출 시 일부 소스를 스캔해 캐시. */
+	private java.util.Map<String, String> projectSymbols() {
+		File root = selectedProjectDir();
+		if (root == null) {
+			return java.util.Collections.emptyMap();
+		}
+		if (cachedSymbols != null && root.equals(cachedSymbolsRoot)) {
+			return cachedSymbols;
+		}
+		java.util.Map<String, String> map = new java.util.LinkedHashMap<>();
+		int scanned = 0;
+		for (String rel : projectFiles()) {
+			if (scanned >= 600 || map.size() >= 20000) {
+				break;
+			}
+			if (!sourceLike(rel)) {
+				continue;
+			}
+			File f = new File(root, rel);
+			if (!f.isFile() || f.length() > 200_000) {
+				continue;
+			}
+			try {
+				String content = new String(java.nio.file.Files.readAllBytes(f.toPath()),
+						java.nio.charset.StandardCharsets.UTF_8);
+				for (String s : SymbolIndex.extractSymbols(content)) {
+					map.putIfAbsent(s, rel);
+				}
+				scanned++;
+			} catch (Exception ignore) {
+				// 읽기 실패 무시
+			}
+		}
+		cachedSymbols = map;
+		cachedSymbolsRoot = root;
+		return map;
+	}
+
+	private static boolean sourceLike(String rel) {
+		String l = rel.toLowerCase();
+		return l.endsWith(".java") || l.endsWith(".js") || l.endsWith(".ts") || l.endsWith(".py") || l.endsWith(".cs")
+				|| l.endsWith(".go") || l.endsWith(".kt") || l.endsWith(".jsp") || l.endsWith(".xfdl")
+				|| l.endsWith(".xjs");
 	}
 
 	private void collectFiles(File base, File dir, java.util.List<String> out, int depth) {

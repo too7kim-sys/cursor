@@ -1,0 +1,19 @@
+name: eclipse-plugin unit tests
+on:
+  push:
+    paths:
+      - 'eclipse-plugin/**'
+  pull_request:
+    paths:
+      - 'eclipse-plugin/**'
+jobs:
+  pure-logic-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Run pure-logic unit tests
+        run: bash eclipse-plugin/run-tests.sh

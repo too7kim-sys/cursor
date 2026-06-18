@@ -25,9 +25,7 @@ import org.eclipse.ui.texteditor.ITextEditor;
 import com.egov.ollama.assist.Activator;
 import com.egov.ollama.assist.CodeEdit;
 import com.egov.ollama.assist.OllamaClient;
-import com.egov.ollama.assist.TextDiff;
 import com.egov.ollama.assist.preferences.PreferenceConstants;
-import com.egov.ollama.assist.ui.DiffConfirmDialog;
 
 /**
  * 인라인 편집(단축키 Ctrl+I): 편집기에서 선택한 코드(없으면 현재 줄)를 자연어 지시로 수정한다.
@@ -113,7 +111,8 @@ public class InlineEditHandler extends AbstractHandler {
 						return Status.OK_STATUS;
 					}
 					if (display != null && !display.isDisposed()) {
-						display.asyncExec(() -> confirmAndApply(shell, doc, te, fOffset, fLength, original, edited));
+						display.asyncExec(() -> EditorPreview.apply(shell, doc, te, fOffset, fLength, original, edited,
+								"인라인 편집"));
 					}
 				} catch (Exception ex) {
 					Activator.logError("인라인 편집 실패", ex);
@@ -128,31 +127,6 @@ public class InlineEditHandler extends AbstractHandler {
 		job.setUser(true);
 		job.schedule();
 		return null;
-	}
-
-	private static void confirmAndApply(Shell shell, IDocument doc, ITextEditor te, int offset, int length,
-			String original, String edited) {
-		if (original.equals(edited)) {
-			MessageDialog.openInformation(shell, "Ollama 인라인 편집", "변경 사항이 없습니다.");
-			return;
-		}
-		DiffConfirmDialog diff = new DiffConfirmDialog(shell, "인라인 편집 — 변경 미리보기",
-				TextDiff.unified(original, edited));
-		if (diff.open() != Window.OK) {
-			return;
-		}
-		try {
-			// 적용 직전 범위가 유효한지 확인(문서가 바뀌지 않았다고 가정)
-			if (offset + length <= doc.getLength() && original.equals(doc.get(offset, length))) {
-				doc.replace(offset, length, edited);
-				te.selectAndReveal(offset, edited.length());
-			} else {
-				MessageDialog.openWarning(shell, "Ollama 인라인 편집",
-						"문서가 변경되어 적용을 취소했습니다. 다시 시도하세요.");
-			}
-		} catch (BadLocationException e) {
-			Activator.logError("인라인 편집 적용 실패", e);
-		}
 	}
 
 	private static String fileExtension(ITextEditor te) {

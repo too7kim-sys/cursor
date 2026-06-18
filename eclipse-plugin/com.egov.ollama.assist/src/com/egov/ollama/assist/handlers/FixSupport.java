@@ -9,9 +9,7 @@ import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPreferenceStore;
-import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
-import org.eclipse.jface.window.Window;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.texteditor.ITextEditor;
@@ -19,9 +17,7 @@ import org.eclipse.ui.texteditor.ITextEditor;
 import com.egov.ollama.assist.Activator;
 import com.egov.ollama.assist.CodeEdit;
 import com.egov.ollama.assist.OllamaClient;
-import com.egov.ollama.assist.TextDiff;
 import com.egov.ollama.assist.preferences.PreferenceConstants;
-import com.egov.ollama.assist.ui.DiffConfirmDialog;
 
 /** 오류 수정(Problems 퀵픽스) 공통 로직: 모델 호출 → diff 미리보기 → 제자리 적용. */
 public final class FixSupport {
@@ -53,7 +49,8 @@ public final class FixSupport {
 							CodeEdit.buildFixPrompt(original, errors, lang), temperature, delta -> sb.append(delta));
 					final String fixed = CodeEdit.cleanCode(sb.toString());
 					if (!fixed.isEmpty() && display != null && !display.isDisposed()) {
-						display.asyncExec(() -> confirmAndApply(shell, doc, te, offset, length, original, fixed));
+						display.asyncExec(() -> EditorPreview.apply(shell, doc, te, offset, length, original, fixed,
+								"오류 수정"));
 					}
 				} catch (Exception ex) {
 					Activator.logError("오류 수정 실패", ex);
@@ -67,29 +64,6 @@ public final class FixSupport {
 		};
 		job.setUser(true);
 		job.schedule();
-	}
-
-	private static void confirmAndApply(Shell shell, IDocument doc, ITextEditor te, int offset, int length,
-			String original, String fixed) {
-		if (original.equals(fixed)) {
-			MessageDialog.openInformation(shell, "Ollama 오류 수정", "변경 사항이 없습니다.");
-			return;
-		}
-		DiffConfirmDialog diff = new DiffConfirmDialog(shell, "오류 수정 — 변경 미리보기",
-				TextDiff.unified(original, fixed));
-		if (diff.open() != Window.OK) {
-			return;
-		}
-		try {
-			if (offset + length <= doc.getLength() && original.equals(doc.get(offset, length))) {
-				doc.replace(offset, length, fixed);
-				te.selectAndReveal(offset, fixed.length());
-			} else {
-				MessageDialog.openWarning(shell, "Ollama 오류 수정", "문서가 변경되어 적용을 취소했습니다. 다시 시도하세요.");
-			}
-		} catch (BadLocationException e) {
-			Activator.logError("오류 수정 적용 실패", e);
-		}
 	}
 
 	/** startLine~endLine(0-based) 범위에 걸린 문제 마커 메시지를 모은다. */

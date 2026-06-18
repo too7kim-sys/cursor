@@ -102,6 +102,44 @@ public final class MarkdownScanner {
 		}
 	}
 
+	/** offset 위치를 포함하는 코드블록의 내부 코드(펜스 줄 제외)를 반환. 블록 밖이면 null. */
+	public static String codeBlockAt(String text, int offset) {
+		if (text == null) {
+			return null;
+		}
+		String[] ls = text.split("\n", -1);
+		int off = 0;
+		boolean in = false;
+		int innerStart = 0;
+		int openStart = 0;
+		for (String line : ls) {
+			int lineStart = off;
+			int lineEnd = off + line.length();
+			if (line.trim().startsWith("```")) {
+				if (!in) {
+					in = true;
+					openStart = lineStart;
+					innerStart = lineEnd + 1;
+				} else {
+					if (offset >= openStart && offset <= lineEnd && innerStart <= lineStart) {
+						return stripTrailingNewlines(text.substring(innerStart, lineStart));
+					}
+					in = false;
+				}
+			}
+			off = lineEnd + 1;
+		}
+		return null;
+	}
+
+	private static String stripTrailingNewlines(String s) {
+		int end = s.length();
+		while (end > 0 && (s.charAt(end - 1) == '\n' || s.charAt(end - 1) == '\r')) {
+			end--;
+		}
+		return s.substring(0, end);
+	}
+
 	/** 마지막 코드블록의 내부 코드(펜스 줄 제외)를 반환. 없으면 null. */
 	public static String lastCodeBlock(String text) {
 		if (text == null) {
