@@ -79,6 +79,12 @@ public class OllamaAgent {
 	private static final int MAX_READ = 60000;
 	private static final int MAX_SEARCH = 100;
 	private static final int CMD_TIMEOUT_SEC = 120;
+	/** 이 문자 수를 넘으면 오래된 도구 결과를 압축한다. */
+	private static final int CONTEXT_BUDGET = 48000;
+	/** 압축 시 보존할 최근 도구 결과 수. */
+	private static final int KEEP_RECENT_TOOL = 4;
+	/** 오래된 도구 결과를 줄일 목표 길이. */
+	private static final int COMPACT_TOOL_CHARS = 600;
 
 	private final String base;
 	private final String model;
@@ -132,6 +138,13 @@ public class OllamaAgent {
 			if (isCancelled()) {
 				log.log("\n[중지됨]\n");
 				return;
+			}
+			// 컨텍스트 한계 방지: 대화가 커지면 오래된 도구 결과를 압축
+			if (ContextManager.estimateChars(messages) > CONTEXT_BUDGET) {
+				int saved = ContextManager.compactToolOutputs(messages, KEEP_RECENT_TOOL, COMPACT_TOOL_CHARS);
+				if (saved > 0) {
+					log.progress("\n🗜 컨텍스트 정리(오래된 도구 결과 " + saved + "자 축약)\n");
+				}
 			}
 			String body = "{\"model\":" + JsonUtil.quote(model)
 					+ ",\"messages\":" + Json.write(messages)
@@ -224,12 +237,14 @@ public class OllamaAgent {
 		StringBuilder sb = new StringBuilder();
 		sb.append("당신은 숙련된 코드 작업 에이전트입니다. 제공된 도구로 프로젝트를 직접 탐색·수정하세요.\n");
 		sb.append("작업 원칙:\n");
-		sb.append("1) 추측하지 말고 search_text(정확한 키워드)/semantic_search(의미 기반)/list_files/read_file 로 실제 코드를 먼저 확인한다.\n");
+		sb.append("0) 여러 단계가 필요한 작업은 먼저 update_plan 으로 계획을 세우고, 단계가 끝날 때마다 상태를 갱신한다.\n");
+		sb.append("1) 추측하지 말고 search_text(정확한 키워드)/semantic_search(의미 기반)/find_files(파일명)/list_files/read_file 로 실제 코드를 먼저 확인한다.\n");
+		sb.append("   - search_text 는 regex(정규식), glob(파일 한정, 예 *.java), context(주변 줄)로 좁힐 수 있다. find_files 로 파일명을 빠르게 찾는다.\n");
 		if (retriever != null) {
 			sb.append("   - 어디를 봐야 할지 모호하면 semantic_search 로 관련 코드를 먼저 찾는다(프로젝트 패턴을 따른다).\n");
 		}
 		sb.append("2) 기존 파일 수정은 가능한 한 apply_edit(부분 수정)을 사용한다. old_text 는 파일에서 유일하게 식별되는 충분한 길이로 제시한다.\n");
-		sb.append("3) 새 파일은 create_file 로 만든다. 파일 전체를 바꿔야 할 때만 write_file 을 쓴다.\n");
+		sb.append("3) 새 파일은 create_file 로 만든다. 파일 전체를 바꿔야 할 때만 write_file 을 쓴다. 파일 삭제는 delete_file, 이동/이름변경은 move_file 을 쓴다.\n");
 		if (enableRun) {
 			sb.append("4) 필요 시 run_command 로 빌드/테스트를 실행해 결과를 확인한다.\n");
 		}
@@ -237,6 +252,7 @@ public class OllamaAgent {
 			sb.append("5) 컴파일 오류 수정 요청 시 get_problems 로 실제 오류 목록을 먼저 확인하고, ")
 					.append("실행/빌드 로그는 get_console 로 확인한다. 서버는 list_servers/start_server/stop_server 로 다룬다.\n");
 		}
+		sb.append("6) 마치기 전에 변경이 요청을 충족하는지 스스로 점검한다(필요하면 수정한 파일을 read_file 로 재확인).\n");
 		sb.append("작업이 끝나면 변경한 파일과 이유를 한국어로 요약한다.");
 		return sb.toString();
 	}
@@ -258,8 +274,17 @@ public class OllamaAgent {
 		tools.add(func("read_file", "파일 내용을 반환(start_line/end_line 으로 범위 지정 가능)", p, Arrays.asList("path")));
 
 		p = new LinkedHashMap<>();
-		p.put("query", prop("string", "찾을 문자열"));
-		tools.add(func("search_text", "프로젝트 전체에서 문자열을 검색해 파일:줄 위치를 반환", p, Arrays.asList("query")));
+		p.put("query", prop("string", "찾을 문자열(regex=true 면 정규식)"));
+		p.put("regex", prop("boolean", "true 면 query 를 정규식으로 해석(기본 false)"));
+		p.put("glob", prop("string", "검색 대상 파일 제한(예: *.java, src/**/*.xml). 비우면 전체"));
+		p.put("context", prop("integer", "일치 줄 앞뒤로 함께 보여줄 줄 수(기본 0)"));
+		tools.add(func("search_text",
+				"프로젝트에서 문자열/정규식을 검색해 파일:줄 위치를 반환. glob 로 파일을 좁히고 context 로 주변 줄을 함께 본다",
+				p, Arrays.asList("query")));
+
+		p = new LinkedHashMap<>();
+		p.put("glob", prop("string", "파일명/경로 glob(예: *Service.java, src/**/*.xml)"));
+		tools.add(func("find_files", "이름/경로 glob 으로 파일을 빠르게 찾아 경로 목록을 반환", p, Arrays.asList("glob")));
 
 		if (retriever != null) {
 			p = new LinkedHashMap<>();
@@ -287,6 +312,25 @@ public class OllamaAgent {
 		p.put("path", prop("string", "파일 경로"));
 		p.put("content", prop("string", "전체 새 내용"));
 		tools.add(func("write_file", "파일을 새 내용으로 전체 덮어쓰기. 사용자 확인 후 적용", p, Arrays.asList("path", "content")));
+
+		p = new LinkedHashMap<>();
+		p.put("path", prop("string", "삭제할 파일 경로"));
+		tools.add(func("delete_file", "파일을 삭제(되돌리기 이력에 기록). 사용자 확인 후 적용", p, Arrays.asList("path")));
+
+		p = new LinkedHashMap<>();
+		p.put("from", prop("string", "원본 파일 경로"));
+		p.put("to", prop("string", "대상 파일 경로(이동/이름변경)"));
+		tools.add(func("move_file", "파일을 이동하거나 이름을 변경(되돌리기 이력에 기록). 사용자 확인 후 적용",
+				p, Arrays.asList("from", "to")));
+
+		p = new LinkedHashMap<>();
+		Map<String, Object> steps = prop("array",
+				"작업 단계 목록. 각 항목은 문자열이거나 {step, status} 객체(status: pending|in_progress|done)");
+		steps.put("items", prop("string", "단계 설명"));
+		p.put("steps", steps);
+		tools.add(func("update_plan",
+				"현재 작업 계획(todo)을 갱신해 사용자에게 진행 상황을 보여준다. 복잡한 작업은 먼저 계획을 세우고 단계마다 갱신한다",
+				p, Arrays.asList("steps")));
 
 		if (enableRun) {
 			p = new LinkedHashMap<>();
@@ -355,7 +399,10 @@ public class OllamaAgent {
 			case "read_file":
 				return readFile(asString(args.get("path")), asInt(args.get("start_line")), asInt(args.get("end_line")));
 			case "search_text":
-				return searchText(asString(args.get("query")));
+				return searchText(asString(args.get("query")), asString(args.get("glob")),
+						asBool(args.get("regex")), asInt(args.get("context")));
+			case "find_files":
+				return findFiles(asString(args.get("glob")));
 			case "semantic_search":
 				return retriever == null ? "코드 색인이 없습니다(뷰의 [색인] 버튼으로 생성하세요)."
 						: safe(retriever.search(asString(args.get("query"))));
@@ -366,6 +413,12 @@ public class OllamaAgent {
 						asString(args.get("new_text")), asBool(args.get("all")));
 			case "write_file":
 				return writeFile(asString(args.get("path")), asString(args.get("content")));
+			case "delete_file":
+				return deleteFile(asString(args.get("path")));
+			case "move_file":
+				return moveFile(asString(args.get("from")), asString(args.get("to")));
+			case "update_plan":
+				return updatePlan(args.get("steps"));
 			case "run_command":
 				return runCommand(asString(args.get("command")));
 			case "get_problems":
@@ -471,16 +524,24 @@ public class OllamaAgent {
 		return content;
 	}
 
-	private String searchText(String query) throws IOException {
+	private String searchText(String query, String glob, boolean regex, int context) throws IOException {
 		if (query == null || query.isEmpty()) {
 			return "query 가 필요합니다";
 		}
+		if (regex) {
+			try {
+				java.util.regex.Pattern.compile(query);
+			} catch (java.util.regex.PatternSyntaxException e) {
+				return "정규식 오류: " + e.getMessage();
+			}
+		}
+		int ctx = context > 0 ? Math.min(context, 5) : 0;
 		StringBuilder sb = new StringBuilder();
 		int[] count = { 0 };
 		Path rootPath = root.getCanonicalFile().toPath();
-		searchRec(root.getCanonicalFile(), rootPath, query, sb, count, 0);
+		searchRec(root.getCanonicalFile(), rootPath, query, glob, regex, ctx, sb, count, 0);
 		if (count[0] == 0) {
-			return "일치하는 내용이 없습니다: " + query;
+			return "일치하는 내용이 없습니다: " + query + (glob != null && !glob.isEmpty() ? " (glob=" + glob + ")" : "");
 		}
 		if (count[0] >= MAX_SEARCH) {
 			sb.append("...(이하 생략)\n");
@@ -488,7 +549,8 @@ public class OllamaAgent {
 		return sb.toString();
 	}
 
-	private void searchRec(File f, Path rootPath, String query, StringBuilder sb, int[] count, int depth) {
+	private void searchRec(File f, Path rootPath, String query, String glob, boolean regex, int context,
+			StringBuilder sb, int[] count, int depth) {
 		if (count[0] >= MAX_SEARCH || depth > 10) {
 			return;
 		}
@@ -501,22 +563,25 @@ public class OllamaAgent {
 				continue;
 			}
 			if (k.isDirectory()) {
-				searchRec(k, rootPath, query, sb, count, depth + 1);
+				searchRec(k, rootPath, query, glob, regex, context, sb, count, depth + 1);
 			} else if (k.isFile() && k.length() <= 1_000_000) {
+				String relp = rootPath.relativize(k.toPath()).toString().replace('\\', '/');
+				if (glob != null && !glob.isEmpty() && !GlobMatcher.matches(glob, relp)) {
+					continue;
+				}
 				try {
 					String content = read(k);
 					if (content.indexOf('\0') >= 0) {
 						continue; // 바이너리 추정
 					}
-					String[] lines = content.split("\n", -1);
-					for (int i = 0; i < lines.length && count[0] < MAX_SEARCH; i++) {
-						if (lines[i].contains(query)) {
-							String relp = rootPath.relativize(k.toPath()).toString().replace('\\', '/');
-							String line = lines[i].trim();
-							if (line.length() > 200) {
-								line = line.substring(0, 200) + "…";
-							}
-							sb.append(relp).append(':').append(i + 1).append(": ").append(line).append('\n');
+					List<String> hits = TextSearch.search(content, query, regex, context, MAX_SEARCH - count[0]);
+					for (String h : hits) {
+						if (h.equals("--")) {
+							sb.append("--\n");
+							continue;
+						}
+						sb.append(relp).append(':').append(h).append('\n');
+						if (TextSearch.isMatchLine(h)) { // 일치 줄만 카운트(컨텍스트 '-'/구분 '--' 제외)
 							count[0]++;
 						}
 					}
@@ -525,6 +590,102 @@ public class OllamaAgent {
 				}
 			}
 		}
+	}
+
+	private String findFiles(String glob) throws IOException {
+		if (glob == null || glob.isEmpty()) {
+			return "glob 이 필요합니다(예: *Service.java)";
+		}
+		StringBuilder sb = new StringBuilder();
+		int[] count = { 0 };
+		Path rootPath = root.getCanonicalFile().toPath();
+		findRec(root.getCanonicalFile(), rootPath, glob, sb, count, 0);
+		if (count[0] == 0) {
+			return "일치하는 파일이 없습니다: " + glob;
+		}
+		if (count[0] >= MAX_LIST) {
+			sb.append("...(이하 생략)\n");
+		}
+		return sb.toString();
+	}
+
+	private void findRec(File f, Path rootPath, String glob, StringBuilder sb, int[] count, int depth) {
+		if (count[0] >= MAX_LIST || depth > 12) {
+			return;
+		}
+		File[] kids = f.listFiles();
+		if (kids == null) {
+			return;
+		}
+		Arrays.sort(kids, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+		for (File k : kids) {
+			if (isIgnored(k.getName()) || count[0] >= MAX_LIST) {
+				continue;
+			}
+			if (k.isDirectory()) {
+				findRec(k, rootPath, glob, sb, count, depth + 1);
+			} else if (k.isFile()) {
+				String relp = rootPath.relativize(k.toPath()).toString().replace('\\', '/');
+				if (GlobMatcher.matches(glob, relp)) {
+					sb.append(relp).append('\n');
+					count[0]++;
+				}
+			}
+		}
+	}
+
+	private String deleteFile(String rel) throws IOException {
+		File f = resolve(rel);
+		if (!f.isFile()) {
+			return "파일이 없습니다: " + rel;
+		}
+		String old = read(f);
+		if (!confirm.ask("Ollama Agent — 파일 삭제 확인", "삭제할 파일: " + rel + "\n\n[내용 미리보기]\n" + clip(old))) {
+			return "사용자가 삭제를 취소했습니다: " + rel;
+		}
+		Files.delete(f.toPath());
+		edited = true;
+		appliedChanges.add(new FileChange(rel, old, "")); // 되돌리면 내용 복원
+		return "파일 삭제 완료: " + rel;
+	}
+
+	private String moveFile(String fromRel, String toRel) throws IOException {
+		if (fromRel == null || fromRel.isEmpty() || toRel == null || toRel.isEmpty()) {
+			return "from/to 경로가 필요합니다";
+		}
+		File from = resolve(fromRel);
+		File to = resolve(toRel);
+		if (!from.isFile()) {
+			return "원본 파일이 없습니다: " + fromRel;
+		}
+		if (to.exists()) {
+			return "대상이 이미 존재합니다: " + toRel;
+		}
+		String content = read(from);
+		if (!confirm.ask("Ollama Agent — 파일 이동 확인", fromRel + "\n  → " + toRel)) {
+			return "사용자가 이동을 취소했습니다.";
+		}
+		File parent = to.getParentFile();
+		if (parent != null && !parent.exists()) {
+			parent.mkdirs();
+		}
+		Files.move(from.toPath(), to.toPath());
+		edited = true;
+		appliedChanges.add(new FileChange(fromRel, content, "")); // 원본 복원용
+		appliedChanges.add(new FileChange(toRel, "", content)); // 대상 생성 기록
+		return "이동 완료: " + fromRel + " → " + toRel;
+	}
+
+	private String updatePlan(Object stepsObj) {
+		if (!(stepsObj instanceof List) || ((List<?>) stepsObj).isEmpty()) {
+			return "steps(배열)가 필요합니다";
+		}
+		String rendered = PlanRenderer.render((List<?>) stepsObj);
+		if (rendered.isEmpty()) {
+			return "표시할 단계가 없습니다";
+		}
+		log.progress(rendered);
+		return "계획을 갱신했습니다(" + ((List<?>) stepsObj).size() + "단계).";
 	}
 
 	private String createFile(String rel, String content) throws IOException {

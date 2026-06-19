@@ -18,9 +18,16 @@ javac -Xlint:all -d "$OUT" \
   "$SRC/com/egov/ollama/assist/ChangeParser.java" \
   "$SRC/com/egov/ollama/assist/GhostText.java" \
   "$SRC/com/egov/ollama/assist/EditMatch.java" \
+  "$SRC/com/egov/ollama/assist/GlobMatcher.java" \
+  "$SRC/com/egov/ollama/assist/TextSearch.java" \
+  "$SRC/com/egov/ollama/assist/ContextManager.java" \
+  "$SRC/com/egov/ollama/assist/PlanRenderer.java" \
   "$SRC/com/egov/ollama/assist/VerifyReport.java" \
   "$SRC/com/egov/ollama/assist/EditHistory.java" \
   "$SRC/com/egov/ollama/assist/FileChange.java" \
-  "$SRC/com/egov/ollama/assist/AgentEditController.java"
+  "$SRC/com/egov/ollama/assist/AgentEditController.java" \
+  "$SRC/com/egov/ollama/assist/OllamaClient.java" \
+  "$SRC/com/egov/ollama/assist/TextDiff.java" \
+  "$SRC/com/egov/ollama/assist/OllamaAgent.java"
 javac -cp "$OUT" -d "$OUT" "$HERE/tests/TestRunner.java"
 java -cp "$OUT" TestRunner

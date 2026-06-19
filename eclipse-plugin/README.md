@@ -46,12 +46,16 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 | 도구 | 설명 | 확인 |
 |------|------|------|
 | `list_files` | 프로젝트 파일/폴더 목록(재귀) | - |
-| `search_text` | 전체 프로젝트 문자열 검색(파일:줄) | - |
+| `search_text` | 문자열/**정규식**(`regex`) 검색. `glob` 로 파일 한정(예 `*.java`), `context` 로 주변 줄 함께 표시 | - |
+| `find_files` | **파일명/경로 glob 검색**(예 `*Service.java`, `src/**/*.xml`) | - |
 | `semantic_search` | **코드베이스 의미 검색(RAG)** — 키워드가 정확치 않아도 의미가 가까운 코드를 찾음(색인 필요) | - |
 | `read_file` | 파일 내용 읽기(`start_line`/`end_line` 범위 지정 가능 — 큰 .xfdl 등) | - |
-| `apply_edit` | **부분 수정** — old_text→new_text 교체(`all=true` 면 일치 전부). 정확히 안 맞아도 **줄 끝 공백·줄바꿈·들여쓰기 보정 매칭**(diff 미리보기) | ✅ |
+| `apply_edit` | **부분 수정** — old_text→new_text 교체(`all=true` 면 일치 전부). 정확히 안 맞아도 **줄 끝 공백·줄바꿈·들여쓰기 보정 매칭**(diff 미리보기). 보정 매칭이 여러 곳이면 거부 | ✅ |
 | `create_file` | 새 파일 생성 | ✅ |
 | `write_file` | 파일 전체 덮어쓰기 | ✅ |
+| `delete_file` | 파일 삭제(되돌리기 이력에 기록) | ✅ |
+| `move_file` | 파일 이동/이름변경(되돌리기 이력에 기록) | ✅ |
+| `update_plan` | **작업 계획(todo) 표시·갱신** — 복잡한 작업의 단계와 진행 상황을 체크리스트로 보여줌 | - |
 | `run_command` | 빌드/테스트 등 명령 실행 (**기본 비활성**) | ✅ |
 | `get_problems` | **Eclipse Problems**(컴파일 오류/경고) 목록 분석 | - |
 | `get_console` | **Eclipse Console** 최근 출력(빌드/실행 로그) 분석 | - |
@@ -69,6 +73,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 3. 파일 변경/명령 실행은 **확인 다이얼로그**(diff·미리보기) 후 적용 → 워크스페이스 자동 새로고침
 4. 더 호출할 도구가 없을 때까지 반복(최대 25회) 후 한국어로 작업 요약
 5. **[중지]** 버튼으로 언제든 취소(진행 중인 한 단계 후 멈춤)
+6. **컨텍스트 자동 관리**: 반복이 길어지면 오래된 도구 결과를 자동 축약해 로컬 모델의 컨텍스트 한계 초과·속도 저하를 방지(최근 결과는 보존)
 
 ### 자동 검증 루프 (약한 모델 품질 보강)
 파일을 수정한 뒤 Agent 가 **스스로 검증하고 오류를 고칩니다**.
@@ -181,7 +186,7 @@ eclipse-plugin/run-tests.sh
 powershell -File eclipse-plugin/run-tests.ps1
 ```
 
-- 테스트 본문: [`tests/TestRunner.java`](tests/TestRunner.java) (현재 46개 단언)
+- 테스트 본문: [`tests/TestRunner.java`](tests/TestRunner.java) (현재 146개 단언)
 - CI: 푸시 시 `.github/workflows/eclipse-plugin-tests.yml` 가 위 테스트를 자동 실행
 - **UI/에디터/핸들러 코드**는 Eclipse 플랫폼 API에 의존하므로 단위 테스트 대상이 아니며,
   **Eclipse PDE 빌드/실행(위 A·B)** 에서 컴파일·검증됩니다.

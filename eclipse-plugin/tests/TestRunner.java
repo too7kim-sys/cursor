@@ -24,6 +24,10 @@ public class TestRunner {
 		verifyReport();
 		editHistory();
 		agentEditController();
+		globMatcher();
+		textSearch();
+		contextManager();
+		planRenderer();
 		System.out.println("\n=== PASS=" + pass + " FAIL=" + fail + " ===");
 		if (fail > 0) System.exit(1);
 	}
@@ -288,4 +292,80 @@ public class TestRunner {
 		c.truncateAndSave(0);
 		ck("aec: truncate", c.history().size()==0);
 	}
+
+	static void globMatcher() {
+		ck("gm: name only", GlobMatcher.matches("*.java", "src/main/A.java"));
+		ck("gm: name no match ext", !GlobMatcher.matches("*.java", "src/A.txt"));
+		ck("gm: suffix name", GlobMatcher.matches("*Service.java", "x/y/UserService.java"));
+		ck("gm: not suffix", !GlobMatcher.matches("*Service.java", "x/UserDao.java"));
+		ck("gm: star no slash", !GlobMatcher.matches("src/*.java", "src/sub/A.java"));
+		ck("gm: doublestar deep", GlobMatcher.matches("src/**/*.java", "src/a/b/C.java"));
+		ck("gm: doublestar zero dir", GlobMatcher.matches("src/**/*.java", "src/C.java"));
+		ck("gm: doublestar wrong root", !GlobMatcher.matches("src/**/*.java", "test/C.java"));
+		ck("gm: question one char", GlobMatcher.matches("A?.java", "src/Ab.java"));
+		ck("gm: dot literal", !GlobMatcher.matches("a.b", "axb"));
+		ck("gm: empty matches all", GlobMatcher.matches("", "anything"));
+	}
+
+	static void textSearch() {
+		String c = "alpha\nbeta foo\ngamma\nfoo bar\ndelta";
+		List<String> r = TextSearch.search(c, "foo", false, 0, 100);
+		ck("ts: two hits", r.size()==2);
+		ck("ts: line no + sep", r.get(0).equals("2: beta foo"));
+		ck("ts: second hit", r.get(1).equals("4: foo bar"));
+		// 정규식
+		List<String> rx = TextSearch.search(c, "^foo", true, 0, 100);
+		ck("ts: regex anchored one", rx.size()==1 && rx.get(0).equals("4: foo bar"));
+		// 컨텍스트 1줄
+		List<String> ctx = TextSearch.search("a\nHIT\nb\nc", "HIT", false, 1, 100);
+		ck("ts: context before", ctx.contains("1- a"));
+		ck("ts: context match sep", ctx.contains("2: HIT"));
+		ck("ts: context after", ctx.contains("3- b"));
+		// max 제한
+		ck("ts: max limit", TextSearch.search(c, "foo", false, 0, 1).size()==1);
+		// 일치 줄 판별
+		ck("ts: isMatchLine match", TextSearch.isMatchLine("12: x"));
+		ck("ts: isMatchLine context", !TextSearch.isMatchLine("12- x"));
+		ck("ts: isMatchLine sep", !TextSearch.isMatchLine("--"));
+	}
+
+	static void contextManager() {
+		List<Object> msgs = new ArrayList<>();
+		msgs.add(mkMsg("system", "sys"));
+		msgs.add(mkMsg("user", "do it"));
+		String big = rep("X", 5000);
+		for (int i=0;i<6;i++) { msgs.add(mkMsg("assistant", "call")); msgs.add(mkMsg("tool", big)); }
+		int before = ContextManager.estimateChars(msgs);
+		int saved = ContextManager.compactToolOutputs(msgs, 2, 600);
+		ck("cm: saved positive", saved > 0);
+		ck("cm: estimate dropped", ContextManager.estimateChars(msgs) < before);
+		// 최근 2개 tool 은 보존
+		int kept = 0;
+		for (int i=msgs.size()-1;i>=0 && kept<2;i--) {
+			Map<?,?> m = (Map<?,?>) msgs.get(i);
+			if ("tool".equals(m.get("role"))) { ck("cm: recent kept", ((String)m.get("content")).length()==5000); kept++; }
+		}
+		// 사용자/시스템 메시지는 손대지 않음
+		ck("cm: user intact", "do it".equals(((Map<?,?>)msgs.get(1)).get("content")));
+		ck("cm: null safe", ContextManager.compactToolOutputs(null, 2, 600)==0);
+	}
+
+	static void planRenderer() {
+		List<Object> steps = new ArrayList<>();
+		steps.add("탐색");
+		Map<String,Object> s2 = new LinkedHashMap<>(); s2.put("step","수정"); s2.put("status","done"); steps.add(s2);
+		Map<String,Object> s3 = new LinkedHashMap<>(); s3.put("step","검증"); s3.put("status","in_progress"); steps.add(s3);
+		String out = PlanRenderer.render(steps);
+		ck("pr: has header", out.contains("작업 계획"));
+		ck("pr: pending box", out.contains("☐ 탐색"));
+		ck("pr: done box", out.contains("☑ 수정"));
+		ck("pr: active box", out.contains("▶ 검증"));
+		ck("pr: empty -> empty", PlanRenderer.render(new ArrayList<>()).isEmpty());
+		ck("pr: null -> empty", PlanRenderer.render(null).isEmpty());
+	}
+
+	static Map<String,Object> mkMsg(String role, String content) {
+		Map<String,Object> m = new LinkedHashMap<>(); m.put("role", role); m.put("content", content); return m;
+	}
+	static String rep(String s, int n) { StringBuilder b=new StringBuilder(); for(int i=0;i<n;i++) b.append(s); return b.toString(); }
 }
