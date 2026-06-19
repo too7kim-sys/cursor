@@ -63,6 +63,73 @@ public final class EditMatch {
 		return n;
 	}
 
+	/**
+	 * old_text 를 못 찾았을 때, 가장 비슷한 줄 위치를 안내하는 힌트를 만든다(토큰 Jaccard 유사도).
+	 * 일치 후보가 전혀 없으면 null.
+	 */
+	public static String nearestHint(String content, String oldText) {
+		if (content == null || oldText == null) {
+			return null;
+		}
+		String firstLine = null;
+		for (String l : oldText.split("\n", -1)) {
+			if (!l.trim().isEmpty()) {
+				firstLine = l.trim();
+				break;
+			}
+		}
+		if (firstLine == null) {
+			return null;
+		}
+		java.util.Set<String> want = tokens(firstLine);
+		if (want.isEmpty()) {
+			return null;
+		}
+		String[] lines = content.split("\n", -1);
+		double best = 0;
+		int bestIdx = -1;
+		for (int i = 0; i < lines.length; i++) {
+			double s = jaccard(want, tokens(lines[i]));
+			if (s > best) {
+				best = s;
+				bestIdx = i;
+			}
+		}
+		if (bestIdx < 0 || best <= 0) {
+			return null;
+		}
+		String t = lines[bestIdx].trim();
+		if (t.length() > 160) {
+			t = t.substring(0, 160) + "…";
+		}
+		return "가장 비슷한 위치: " + (bestIdx + 1) + "행: " + t
+				+ " (read_file 로 정확한 내용을 확인하거나 replace_lines 로 줄 범위를 교체하세요)";
+	}
+
+	private static java.util.Set<String> tokens(String s) {
+		java.util.Set<String> out = new java.util.LinkedHashSet<>();
+		for (String t : s.trim().split("[^A-Za-z0-9_]+")) {
+			if (!t.isEmpty()) {
+				out.add(t);
+			}
+		}
+		return out;
+	}
+
+	private static double jaccard(java.util.Set<String> a, java.util.Set<String> b) {
+		if (a.isEmpty() || b.isEmpty()) {
+			return 0;
+		}
+		int inter = 0;
+		for (String x : a) {
+			if (b.contains(x)) {
+				inter++;
+			}
+		}
+		int union = a.size() + b.size() - inter;
+		return union == 0 ? 0 : (double) inter / union;
+	}
+
 	private static Result lineMatch(String content, String oldText, boolean fullTrim) {
 		List<int[]> lines = lineSpans(content);
 		String[] rawOld = oldText.split("\n", -1);

@@ -85,6 +85,12 @@ public class OllamaAgent {
 	private static final int KEEP_RECENT_TOOL = 4;
 	/** 오래된 도구 결과를 줄일 목표 길이. */
 	private static final int COMPACT_TOOL_CHARS = 600;
+	/** 같은 호출이 이 횟수에 도달하면 모델에 경고(넌지). */
+	private static final int LOOP_NUDGE = 3;
+	/** 같은 호출이 이 횟수에 도달하면 실행을 중단. */
+	private static final int LOOP_ABORT = 5;
+	/** 시작 시 주입할 프로젝트 구조 최대 항목 수. */
+	private static final int STRUCT_MAX = 120;
 
 	private final String base;
 	private final String model;
@@ -101,6 +107,8 @@ public class OllamaAgent {
 	private boolean edited;
 	/** 이번 실행에서 적용한 변경 기록. */
 	private final java.util.List<FileChange> appliedChanges = new java.util.ArrayList<>();
+	/** 동일 도구 호출 반복(루프) 감지기. */
+	private final RepeatTracker repeats = new RepeatTracker();
 
 	public OllamaAgent(String base, String model, String system, File root, boolean enableRun,
 			double temperature, String verifyCommand,
@@ -130,6 +138,11 @@ public class OllamaAgent {
 		if (rules != null) {
 			messages.add(msg("system", "이 프로젝트의 규칙/컨벤션(AGENTS.md). 반드시 준수하세요:\n" + rules));
 			log.progress("\n(프로젝트 규칙 AGENTS.md 적용)\n");
+		}
+		String structure = projectStructure();
+		if (structure != null && !structure.isEmpty()) {
+			messages.add(msg("system",
+					"프로젝트 구조(일부). list_files 호출을 줄이기 위한 참고용이며, 자세한 내용은 도구로 확인하세요:\n" + structure));
 		}
 		messages.add(msg("user", userPrompt));
 		int verifyRounds = 0;
@@ -215,6 +228,14 @@ public class OllamaAgent {
 				String name = asString(fn.get("name"));
 				Map<String, Object> args = toArgs(fn.get("arguments"));
 
+				// 막힘(루프) 감지: 같은 도구를 같은 인자로 반복하면 한 번 넌지하고, 계속되면 중단
+				String sig = RepeatTracker.signature(name, briefArgs(args));
+				int times = repeats.record(sig);
+				if (times >= LOOP_ABORT) {
+					log.log("\n[안내] 동일한 호출(" + name + ")이 " + times + "회 반복되어 중단합니다. 접근을 바꿔 다시 시도하세요.\n");
+					return;
+				}
+
 				log.progress("\n🔧 " + name + "(" + briefArgs(args) + ")\n");
 				String result = executeTool(name, args);
 				log.progress("   ↳ " + firstLine(result) + "\n");
@@ -222,6 +243,10 @@ public class OllamaAgent {
 				Map<String, Object> toolMsg = new LinkedHashMap<>();
 				toolMsg.put("role", "tool");
 				toolMsg.put("tool_name", name);
+				if (times == LOOP_NUDGE) {
+					result = result + "\n\n[주의] 같은 도구를 같은 인자로 여러 번 호출하고 있습니다. "
+							+ "다른 접근(다른 파일/검색어/도구)을 시도하거나, 정보가 충분하면 작업을 마무리하세요.";
+				}
 				toolMsg.put("content", result);
 				messages.add(toolMsg);
 			}
@@ -240,10 +265,12 @@ public class OllamaAgent {
 		sb.append("0) 여러 단계가 필요한 작업은 먼저 update_plan 으로 계획을 세우고, 단계가 끝날 때마다 상태를 갱신한다.\n");
 		sb.append("1) 추측하지 말고 search_text(정확한 키워드)/semantic_search(의미 기반)/find_files(파일명)/list_files/read_file 로 실제 코드를 먼저 확인한다.\n");
 		sb.append("   - search_text 는 regex(정규식), glob(파일 한정, 예 *.java), context(주변 줄)로 좁힐 수 있다. find_files 로 파일명을 빠르게 찾는다.\n");
+		sb.append("   - 큰 파일은 통째로 읽지 말고 outline 으로 구조를 본 뒤 read_symbol 로 필요한 메서드/클래스만 읽는다.\n");
 		if (retriever != null) {
 			sb.append("   - 어디를 봐야 할지 모호하면 semantic_search 로 관련 코드를 먼저 찾는다(프로젝트 패턴을 따른다).\n");
 		}
 		sb.append("2) 기존 파일 수정은 가능한 한 apply_edit(부분 수정)을 사용한다. old_text 는 파일에서 유일하게 식별되는 충분한 길이로 제시한다.\n");
+		sb.append("   - old_text 를 정확히 옮기기 어렵거나 실패하면, read_file 로 줄번호를 확인한 뒤 replace_lines(start_line, end_line)로 줄 범위를 교체한다.\n");
 		sb.append("3) 새 파일은 create_file 로 만든다. 파일 전체를 바꿔야 할 때만 write_file 을 쓴다. 파일 삭제는 delete_file, 이동/이름변경은 move_file 을 쓴다.\n");
 		if (enableRun) {
 			sb.append("4) 필요 시 run_command 로 빌드/테스트를 실행해 결과를 확인한다.\n");
@@ -272,6 +299,18 @@ public class OllamaAgent {
 		p.put("start_line", prop("integer", "시작 줄(1부터, 선택). 큰 파일은 범위 지정 권장"));
 		p.put("end_line", prop("integer", "끝 줄(선택)"));
 		tools.add(func("read_file", "파일 내용을 반환(start_line/end_line 으로 범위 지정 가능)", p, Arrays.asList("path")));
+
+		p = new LinkedHashMap<>();
+		p.put("path", prop("string", "대상 파일 경로"));
+		tools.add(func("outline", "파일의 클래스/메서드/함수 정의 목록을 '줄번호: 선언' 으로 반환(파일 구조 파악용)",
+				p, Arrays.asList("path")));
+
+		p = new LinkedHashMap<>();
+		p.put("path", prop("string", "대상 파일 경로"));
+		p.put("symbol", prop("string", "읽을 심볼명(메서드/클래스/함수)"));
+		tools.add(func("read_symbol",
+				"파일에서 특정 심볼(메서드/클래스)의 본문만 줄번호와 함께 반환. 큰 파일을 통째 읽지 말고 필요한 부분만 본다",
+				p, Arrays.asList("path", "symbol")));
 
 		p = new LinkedHashMap<>();
 		p.put("query", prop("string", "찾을 문자열(regex=true 면 정규식)"));
@@ -307,6 +346,15 @@ public class OllamaAgent {
 		tools.add(func("apply_edit",
 				"파일에서 old_text 를 찾아 new_text 로 교체(부분 수정). 기본은 한 곳, all=true 면 전체. 사용자 확인 후 적용",
 				p, Arrays.asList("path", "old_text", "new_text")));
+
+		p = new LinkedHashMap<>();
+		p.put("path", prop("string", "수정할 파일 경로"));
+		p.put("start_line", prop("integer", "교체 시작 줄(1부터, 포함)"));
+		p.put("end_line", prop("integer", "교체 끝 줄(포함)"));
+		p.put("new_text", prop("string", "해당 줄 범위를 대체할 새 내용(빈 값이면 삭제)"));
+		tools.add(func("replace_lines",
+				"read_file 로 본 줄번호 기준으로 [start_line..end_line] 구간을 new_text 로 교체. old_text 를 정확히 옮기기 어려울 때 사용. 사용자 확인 후 적용",
+				p, Arrays.asList("path", "start_line", "end_line", "new_text")));
 
 		p = new LinkedHashMap<>();
 		p.put("path", prop("string", "파일 경로"));
@@ -391,13 +439,67 @@ public class OllamaAgent {
 		return appliedChanges;
 	}
 
+	/** 한 실행 안에서 변하지 않는 읽기 도구 결과 캐시. 파일 수정 시 비운다. */
+	private final java.util.Map<String, String> toolCache = new java.util.HashMap<>();
+
+	private static boolean isCacheable(String name) {
+		switch (name == null ? "" : name) {
+		case "list_files":
+		case "read_file":
+		case "outline":
+		case "read_symbol":
+		case "search_text":
+		case "find_files":
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	private static boolean isModifying(String name) {
+		switch (name == null ? "" : name) {
+		case "create_file":
+		case "apply_edit":
+		case "replace_lines":
+		case "write_file":
+		case "delete_file":
+		case "move_file":
+			return true;
+		default:
+			return false;
+		}
+	}
+
 	private String executeTool(String name, Map<String, Object> args) {
+		String cacheKey = isCacheable(name) ? name + "|" + Json.write(args) : null;
+		if (cacheKey != null) {
+			String hit = toolCache.get(cacheKey);
+			if (hit != null) {
+				return hit;
+			}
+		}
+		String result = dispatchTool(name, args);
+		if (cacheKey != null && result != null && !result.startsWith("도구 오류")) {
+			toolCache.put(cacheKey, result);
+		}
+		// 파일이 바뀌면 읽기 캐시가 낡으므로 비운다(다음 read 가 디스크를 다시 본다)
+		if (isModifying(name) && result != null && (result.contains("완료") || result.contains("저장"))) {
+			toolCache.clear();
+		}
+		return result;
+	}
+
+	private String dispatchTool(String name, Map<String, Object> args) {
 		try {
 			switch (name == null ? "" : name) {
 			case "list_files":
 				return listFiles(asString(args.get("path")));
 			case "read_file":
 				return readFile(asString(args.get("path")), asInt(args.get("start_line")), asInt(args.get("end_line")));
+			case "outline":
+				return outline(asString(args.get("path")));
+			case "read_symbol":
+				return readSymbol(asString(args.get("path")), asString(args.get("symbol")));
 			case "search_text":
 				return searchText(asString(args.get("query")), asString(args.get("glob")),
 						asBool(args.get("regex")), asInt(args.get("context")));
@@ -411,6 +513,9 @@ public class OllamaAgent {
 			case "apply_edit":
 				return applyEdit(asString(args.get("path")), asString(args.get("old_text")),
 						asString(args.get("new_text")), asBool(args.get("all")));
+			case "replace_lines":
+				return replaceLines(asString(args.get("path")), asInt(args.get("start_line")),
+						asInt(args.get("end_line")), asString(args.get("new_text")));
 			case "write_file":
 				return writeFile(asString(args.get("path")), asString(args.get("content")));
 			case "delete_file":
@@ -491,6 +596,44 @@ public class OllamaAgent {
 		}
 	}
 
+	/** 실행 시작 시 1회 주입할 얕고(깊이≤3) 작은(≤STRUCT_MAX) 프로젝트 구조. 실패하면 null. */
+	private String projectStructure() {
+		try {
+			StringBuilder sb = new StringBuilder();
+			int[] count = { 0 };
+			Path rootPath = root.getCanonicalFile().toPath();
+			structRec(root.getCanonicalFile(), rootPath, sb, count, 0);
+			if (count[0] >= STRUCT_MAX) {
+				sb.append("...(이하 생략)\n");
+			}
+			return sb.toString();
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	private void structRec(File f, Path rootPath, StringBuilder sb, int[] count, int depth) {
+		if (count[0] >= STRUCT_MAX || depth > 3) {
+			return;
+		}
+		File[] kids = f.listFiles();
+		if (kids == null) {
+			return;
+		}
+		Arrays.sort(kids, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+		for (File k : kids) {
+			if (isIgnored(k.getName()) || count[0] >= STRUCT_MAX) {
+				continue;
+			}
+			String relp = rootPath.relativize(k.toPath()).toString().replace('\\', '/');
+			sb.append(k.isDirectory() ? relp + "/\n" : relp + "\n");
+			count[0]++;
+			if (k.isDirectory()) {
+				structRec(k, rootPath, sb, count, depth + 1);
+			}
+		}
+	}
+
 	private static boolean isIgnored(String name) {
 		return name.equals(".git") || name.equals("target") || name.equals("node_modules") || name.equals("bin")
 				|| name.equals(".settings") || name.equals(".metadata") || name.equals(".svn");
@@ -522,6 +665,30 @@ public class OllamaAgent {
 					+ "\n...(파일이 길어 일부만 표시됨. start_line/end_line 으로 범위 지정 가능)";
 		}
 		return content;
+	}
+
+	private String outline(String rel) throws IOException {
+		File f = resolve(rel);
+		if (!f.isFile()) {
+			return "파일이 없습니다: " + rel;
+		}
+		String out = SymbolReader.outline(read(f));
+		return out.isEmpty() ? "(인식된 심볼이 없습니다: " + rel + ")" : out;
+	}
+
+	private String readSymbol(String rel, String symbol) throws IOException {
+		if (symbol == null || symbol.isEmpty()) {
+			return "symbol 이 필요합니다";
+		}
+		File f = resolve(rel);
+		if (!f.isFile()) {
+			return "파일이 없습니다: " + rel;
+		}
+		String body = SymbolReader.read(read(f), symbol);
+		if (body == null) {
+			return "심볼을 찾지 못했습니다: " + symbol + " (outline 으로 정의 목록을 확인하세요)";
+		}
+		return body.length() > MAX_READ ? body.substring(0, MAX_READ) + "\n...(생략)" : body;
 	}
 
 	private String searchText(String query, String glob, boolean regex, int context) throws IOException {
@@ -723,7 +890,9 @@ public class OllamaAgent {
 		if (all) {
 			int count = EditMatch.countExact(content, oldText);
 			if (count == 0) {
-				return "old_text 를 파일에서 찾지 못했습니다(all 교체는 정확 일치만 지원). read_file 로 확인하세요.";
+				String hint = EditMatch.nearestHint(content, oldText);
+				return "old_text 를 파일에서 찾지 못했습니다(all 교체는 정확 일치만 지원). read_file 로 확인하세요."
+						+ (hint != null ? "\n" + hint : "");
 			}
 			String updated = content.replace(oldText, newText);
 			if (!confirm.ask("Ollama Agent — 다중 수정 확인",
@@ -738,7 +907,9 @@ public class OllamaAgent {
 
 		EditMatch.Result m = EditMatch.find(content, oldText);
 		if (m == null) {
-			return "old_text 를 파일에서 찾지 못했습니다. read_file 로 정확한 내용(공백/들여쓰기 포함)을 확인하세요.";
+			String hint = EditMatch.nearestHint(content, oldText);
+			return "old_text 를 파일에서 찾지 못했습니다. read_file 로 정확한 내용(공백/들여쓰기 포함)을 확인하세요."
+					+ (hint != null ? "\n" + hint : "");
 		}
 		if ("exact".equals(m.mode) && EditMatch.hasDuplicateExact(content, oldText)) {
 			return "old_text 가 여러 곳과 일치합니다. 더 길고 유일한 범위를 지정하거나 all=true 로 일괄 교체하세요.";
@@ -757,6 +928,46 @@ public class OllamaAgent {
 		edited = true;
 		appliedChanges.add(new FileChange(rel, content, updated));
 		return "부분 수정 완료: " + rel + ("exact".equals(m.mode) ? "" : " (보정 매칭)");
+	}
+
+	private String replaceLines(String rel, int start, int end, String newText) throws IOException {
+		if (start < 1 || end < start) {
+			return "start_line/end_line 이 올바르지 않습니다(1부터, start<=end).";
+		}
+		File f = resolve(rel);
+		if (!f.isFile()) {
+			return "파일이 없습니다: " + rel;
+		}
+		String content = read(f);
+		String updated = LineEdit.replace(content, start, end, newText == null ? "" : newText);
+		if (updated == null) {
+			int total = content.split("\n", -1).length;
+			return "줄 범위를 적용할 수 없습니다(파일은 " + total + "줄). read_file 로 줄번호를 확인하세요.";
+		}
+		String before = sliceLines(content, start, end);
+		if (!confirm.ask("Ollama Agent — 줄 범위 수정 확인",
+				"파일: " + rel + "  (줄 " + start + "-" + end + ")\n\n" + TextDiff.unified(before, newText == null ? "" : newText))) {
+			return "사용자가 수정을 취소했습니다: " + rel;
+		}
+		write(f, updated);
+		edited = true;
+		appliedChanges.add(new FileChange(rel, content, updated));
+		return "줄 범위 수정 완료: " + rel + " (줄 " + start + "-" + end + ")";
+	}
+
+	/** content 의 1-based [start,end] 줄을 추출(diff 표시용). */
+	private static String sliceLines(String content, int start, int end) {
+		String[] lines = content.split("\n", -1);
+		int s = Math.max(1, start);
+		int e = Math.min(end, lines.length);
+		StringBuilder sb = new StringBuilder();
+		for (int i = s - 1; i < e; i++) {
+			sb.append(lines[i]);
+			if (i < e - 1) {
+				sb.append('\n');
+			}
+		}
+		return sb.toString();
 	}
 
 	private String writeFile(String rel, String content) throws IOException {

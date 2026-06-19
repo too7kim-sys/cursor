@@ -50,7 +50,10 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 | `find_files` | **파일명/경로 glob 검색**(예 `*Service.java`, `src/**/*.xml`) | - |
 | `semantic_search` | **코드베이스 의미 검색(RAG)** — 키워드가 정확치 않아도 의미가 가까운 코드를 찾음(색인 필요) | - |
 | `read_file` | 파일 내용 읽기(`start_line`/`end_line` 범위 지정 가능 — 큰 .xfdl 등) | - |
-| `apply_edit` | **부분 수정** — old_text→new_text 교체(`all=true` 면 일치 전부). 정확히 안 맞아도 **줄 끝 공백·줄바꿈·들여쓰기 보정 매칭**(diff 미리보기). 보정 매칭이 여러 곳이면 거부 | ✅ |
+| `outline` | 파일의 **클래스/메서드 정의 목록**(`줄번호: 선언`) — 큰 파일 구조 파악 | - |
+| `read_symbol` | 파일에서 **특정 메서드/클래스 본문만** 줄번호와 함께 읽기(토큰 절약) | - |
+| `apply_edit` | **부분 수정** — old_text→new_text 교체(`all=true` 면 일치 전부). 정확히 안 맞아도 **줄 끝 공백·줄바꿈·들여쓰기 보정 매칭**(diff 미리보기). 보정 매칭이 여러 곳이면 거부. 실패 시 **가장 비슷한 줄 위치** 안내 | ✅ |
+| `replace_lines` | **줄번호 범위 교체** — `read_file` 로 본 `start_line`~`end_line` 구간을 통째로 교체(old_text 재현이 어려운 모델용) | ✅ |
 | `create_file` | 새 파일 생성 | ✅ |
 | `write_file` | 파일 전체 덮어쓰기 | ✅ |
 | `delete_file` | 파일 삭제(되돌리기 이력에 기록) | ✅ |
@@ -74,6 +77,9 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 4. 더 호출할 도구가 없을 때까지 반복(최대 25회) 후 한국어로 작업 요약
 5. **[중지]** 버튼으로 언제든 취소(진행 중인 한 단계 후 멈춤)
 6. **컨텍스트 자동 관리**: 반복이 길어지면 오래된 도구 결과를 자동 축약해 로컬 모델의 컨텍스트 한계 초과·속도 저하를 방지(최근 결과는 보존)
+7. **시작 시 프로젝트 구조 주입**: 얕은 디렉터리 트리를 1회 제공해 `list_files` 왕복을 줄임
+8. **읽기 결과 캐싱**: 한 실행 안에서 안 바뀐 파일의 읽기/검색 결과를 재사용(파일 수정 시 자동 무효화)
+9. **막힘(루프) 감지**: 같은 도구를 같은 인자로 반복하면 다른 접근을 권하고, 계속되면 자동 중단
 
 ### 자동 검증 루프 (약한 모델 품질 보강)
 파일을 수정한 뒤 Agent 가 **스스로 검증하고 오류를 고칩니다**.
@@ -186,7 +192,7 @@ eclipse-plugin/run-tests.sh
 powershell -File eclipse-plugin/run-tests.ps1
 ```
 
-- 테스트 본문: [`tests/TestRunner.java`](tests/TestRunner.java) (현재 146개 단언)
+- 테스트 본문: [`tests/TestRunner.java`](tests/TestRunner.java) (현재 174개 단언)
 - CI: 푸시 시 `.github/workflows/eclipse-plugin-tests.yml` 가 위 테스트를 자동 실행
 - **UI/에디터/핸들러 코드**는 Eclipse 플랫폼 API에 의존하므로 단위 테스트 대상이 아니며,
   **Eclipse PDE 빌드/실행(위 A·B)** 에서 컴파일·검증됩니다.

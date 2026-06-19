@@ -28,6 +28,10 @@ public class TestRunner {
 		textSearch();
 		contextManager();
 		planRenderer();
+		symbolReader();
+		lineEdit();
+		repeatTracker();
+		nearestHint();
 		System.out.println("\n=== PASS=" + pass + " FAIL=" + fail + " ===");
 		if (fail > 0) System.exit(1);
 	}
@@ -368,4 +372,52 @@ public class TestRunner {
 		Map<String,Object> m = new LinkedHashMap<>(); m.put("role", role); m.put("content", content); return m;
 	}
 	static String rep(String s, int n) { StringBuilder b=new StringBuilder(); for(int i=0;i<n;i++) b.append(s); return b.toString(); }
+
+	static void symbolReader() {
+		String c = "package x;\npublic class Foo {\n  public void bar() {\n    int y=1;\n  }\n  public int baz(int n){ return n; }\n}";
+		String out = SymbolReader.outline(c);
+		ck("sr: outline Foo", out.contains("Foo"));
+		ck("sr: outline bar", out.contains("bar"));
+		ck("sr: outline baz", out.contains("baz"));
+		ck("sr: outline has line no", out.contains(": "));
+		String bar = SymbolReader.read(c, "bar");
+		ck("sr: read bar body", bar != null && bar.contains("int y=1;") && bar.contains("void bar()"));
+		ck("sr: read bar balanced", bar != null && bar.contains("}") && !bar.contains("int baz"));
+		String baz = SymbolReader.read(c, "baz");
+		ck("sr: read one-line baz", baz != null && baz.contains("return n;"));
+		ck("sr: read missing", SymbolReader.read(c, "nope") == null);
+		ck("sr: outline empty", SymbolReader.outline("").isEmpty());
+	}
+
+	static void lineEdit() {
+		ck("le: replace mid", "a\nB\nc".equals(LineEdit.replace("a\nb\nc", 2, 2, "B")));
+		ck("le: replace range", "a\nX".equals(LineEdit.replace("a\nb\nc", 2, 3, "X")));
+		ck("le: multi-line repl", "a\nX\nY\nc".equals(LineEdit.replace("a\nb\nc", 2, 2, "X\nY")));
+		ck("le: delete via empty", "a\nc".equals(LineEdit.replace("a\nb\nc", 2, 2, "")));
+		ck("le: first line", "Z\nb".equals(LineEdit.replace("a\nb", 1, 1, "Z")));
+		ck("le: trailing nl kept", "Z\nb\n".equals(LineEdit.replace("a\nb\n", 1, 1, "Z")));
+		ck("le: end clamps", "a\nX".equals(LineEdit.replace("a\nb\nc", 2, 99, "X")));
+		ck("le: bad start", LineEdit.replace("a\nb", 0, 1, "x") == null);
+		ck("le: start gt len", LineEdit.replace("a\nb", 5, 6, "x") == null);
+		ck("le: end lt start", LineEdit.replace("a\nb", 2, 1, "x") == null);
+	}
+
+	static void repeatTracker() {
+		RepeatTracker t = new RepeatTracker();
+		String s = RepeatTracker.signature("read_file", "path=A.java");
+		ck("rt: first", t.record(s) == 1);
+		ck("rt: second", t.record(s) == 2);
+		ck("rt: third", t.record(s) == 3);
+		ck("rt: other independent", t.record(RepeatTracker.signature("read_file", "path=B.java")) == 1);
+		ck("rt: count query", t.count(s) == 3);
+		ck("rt: sig null safe", RepeatTracker.signature(null, null).equals("|"));
+	}
+
+	static void nearestHint() {
+		String c = "int total = 0;\nfor (int i=0;i<n;i++) {\n  total += arr[i];\n}\nreturn total;";
+		String hint = EditMatch.nearestHint(c, "for (int i = 0; i < n; i++) {");
+		ck("nh: finds for line", hint != null && hint.contains("2행"));
+		ck("nh: no shared tokens -> null", EditMatch.nearestHint(c, "zzz qqq www vvv") == null);
+		ck("nh: blank old -> null", EditMatch.nearestHint(c, "   \n  ") == null);
+	}
 }

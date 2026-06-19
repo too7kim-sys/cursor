@@ -22,6 +22,9 @@ javac -Xlint:all -d "$OUT" \
   "$SRC/com/egov/ollama/assist/TextSearch.java" \
   "$SRC/com/egov/ollama/assist/ContextManager.java" \
   "$SRC/com/egov/ollama/assist/PlanRenderer.java" \
+  "$SRC/com/egov/ollama/assist/SymbolReader.java" \
+  "$SRC/com/egov/ollama/assist/LineEdit.java" \
+  "$SRC/com/egov/ollama/assist/RepeatTracker.java" \
   "$SRC/com/egov/ollama/assist/VerifyReport.java" \
   "$SRC/com/egov/ollama/assist/EditHistory.java" \
   "$SRC/com/egov/ollama/assist/FileChange.java" \
