@@ -387,6 +387,23 @@ public class TestRunner {
 		ck("sr: read one-line baz", baz != null && baz.contains("return n;"));
 		ck("sr: read missing", SymbolReader.read(c, "nope") == null);
 		ck("sr: outline empty", SymbolReader.outline("").isEmpty());
+		// 문자열 안의 중괄호로 본문이 일찍 끝나지 않아야 함
+		String strBrace = "class C {\n  String f() {\n    return \"a{b}c\";\n  }\n  int g(){ return 9; }\n}";
+		String f = SymbolReader.read(strBrace, "f");
+		ck("sr: string-brace body", f != null && f.contains("return \"a{b}c\";"));
+		ck("sr: string-brace stops right", f != null && !f.contains("int g()"));
+		// 줄 주석 안의 중괄호도 무시
+		String cmtBrace = "class D {\n  void h() {\n    // closing } here\n    int z=1;\n  }\n}";
+		String h = SymbolReader.read(cmtBrace, "h");
+		ck("sr: comment-brace body", h != null && h.contains("int z=1;") && h.contains("void h()"));
+		// 인터페이스 추상 메서드(본문 없음) → 선언 줄만
+		String iface = "interface I {\n  void doX();\n  void doY();\n}";
+		String dx = SymbolReader.read(iface, "doX");
+		ck("sr: abstract decl only", dx != null && dx.contains("doX();") && !dx.contains("doY"));
+		// 블록 주석 안의 중괄호 무시
+		String blk = "class E {\n  int k() {\n    /* { not real ; */\n    return 1;\n  }\n}";
+		String kk = SymbolReader.read(blk, "k");
+		ck("sr: block-comment brace", kk != null && kk.contains("return 1;") && kk.trim().endsWith("}"));
 	}
 
 	static void lineEdit() {

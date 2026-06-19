@@ -4,8 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 심볼(메서드/클래스) 단위 읽기 헬퍼(SWT 비의존, 테스트 가능). 정확한 파서가 아니라
- * {@link SymbolIndex} 휴리스틱 + 중괄호 균형으로 본문 범위를 추정한다. 약한 로컬 모델이
+ * 심볼(메서드/클래스) 단위 읽기 헬퍼(SWT 비의존, 테스트 가능). 정확한 파서는 아니지만
+ * {@link SymbolIndex} 휴리스틱으로 정의 줄을 찾고, <b>문자열/문자 리터럴과 주석을 인지하는</b>
+ * 중괄호 매칭으로 본문 범위를 정한다(리터럴·주석 안의 {@code { } ;} 는 무시). 약한 로컬 모델이
  * 거대 파일을 통째로 읽지 않고 필요한 심볼만 보게 해 토큰을 아끼는 용도.
  */
 public final class SymbolReader {
@@ -21,8 +22,7 @@ public final class SymbolReader {
 			return "";
 		}
 		String[] lines = content.split("\n", -1);
-		List<int[]> seen = new ArrayList<>(); // [line]
-		List<String> out = new ArrayList<>();
+		List<Integer> defLines = new ArrayList<>();
 		boolean[] used = new boolean[lines.length];
 		for (String sym : SymbolIndex.extractSymbols(content)) {
 			int dl = SymbolIndex.defLine(content, sym);
@@ -30,11 +30,11 @@ public final class SymbolReader {
 				continue;
 			}
 			used[dl] = true;
-			seen.add(new int[] { dl });
+			defLines.add(dl);
 		}
-		seen.sort((a, b) -> Integer.compare(a[0], b[0]));
-		for (int[] s : seen) {
-			int ln = s[0];
+		defLines.sort(Integer::compare);
+		List<String> out = new ArrayList<>();
+		for (int ln : defLines) {
 			String text = lines[ln].trim();
 			if (text.length() > 160) {
 				text = text.substring(0, 160) + "…";
@@ -45,8 +45,8 @@ public final class SymbolReader {
 	}
 
 	/**
-	 * 심볼의 정의 줄부터 본문(중괄호 균형) 끝까지를 줄번호와 함께 반환. 중괄호가 없으면 선언 줄 주변을 반환.
-	 * 못 찾으면 null.
+	 * 심볼의 정의 줄부터 본문(중괄호 균형) 끝까지를 줄번호와 함께 반환. 본문 중괄호가 없으면(추상/인터페이스
+	 * 메서드 등) 선언 줄만 반환한다. 못 찾으면 null.
 	 */
 	public static String read(String content, String name) {
 		if (content == null || name == null || name.isEmpty()) {
@@ -60,49 +60,119 @@ public final class SymbolReader {
 		if (dl >= lines.length) {
 			return null;
 		}
-		// 정의 줄 이후 첫 '{' 위치(줄) 찾기
-		int braceLine = -1;
-		for (int i = dl; i < lines.length; i++) {
-			if (lines[i].indexOf('{') >= 0) {
-				braceLine = i;
-				break;
+		int[] lineStart = lineStarts(lines);
+		int from = lineStart[dl];
+		List<int[]> toks = scanTokens(content); // [offset, type] type: 1='{', -1='}', 2=';'
+
+		// 정의 줄 이후 처음 등장하는 '{' 또는 ';' 로 본문 유무를 판단
+		int decide = -1;
+		for (int t = 0; t < toks.size(); t++) {
+			int[] tok = toks.get(t);
+			if (tok[0] < from) {
+				continue;
 			}
-			// 선언이 ';' 로 끝나면(본문 없는 추상/인터페이스 메서드) 선언 줄만
-			if (lines[i].indexOf(';') >= 0) {
+			if (tok[1] == 1 || tok[1] == 2) {
+				decide = t;
 				break;
 			}
 		}
-		int start = dl;
-		int end;
-		if (braceLine < 0) {
-			end = Math.min(lines.length - 1, dl + 1);
-			return format(lines, start, Math.min(end, dl)); // 선언 줄(들)
+		if (decide < 0 || toks.get(decide)[1] == 2) {
+			// 본문 없음(선언만) — 선언 줄(들)만
+			int end = decide < 0 ? dl : lineOf(lineStart, toks.get(decide)[0]);
+			return format(lines, dl, Math.max(dl, end));
 		}
+		// '{' 부터 균형 매칭으로 닫는 '}' 찾기(리터럴/주석 안의 괄호는 toks 에 없음)
 		int depth = 0;
-		boolean opened = false;
-		end = lines.length - 1;
-		outer: for (int i = braceLine; i < lines.length; i++) {
-			String l = lines[i];
-			for (int j = 0; j < l.length(); j++) {
-				char c = l.charAt(j);
-				if (c == '{') {
-					depth++;
-					opened = true;
-				} else if (c == '}') {
-					depth--;
-					if (opened && depth <= 0) {
-						end = i;
-						break outer;
-					}
+		int closeOff = -1;
+		for (int t = decide; t < toks.size(); t++) {
+			int[] tok = toks.get(t);
+			if (tok[1] == 1) {
+				depth++;
+			} else if (tok[1] == -1) {
+				depth--;
+				if (depth == 0) {
+					closeOff = tok[0];
+					break;
 				}
 			}
 		}
-		// 비정상(불균형)이면 합리적 상한으로 자른다
-		if (!opened) {
-			start = Math.max(0, dl - 1);
-			end = Math.min(lines.length - 1, dl + FALLBACK_RADIUS);
+		if (closeOff < 0) {
+			// 불균형 — 합리적 상한으로 자른다
+			return format(lines, Math.max(0, dl - 1), Math.min(lines.length - 1, dl + FALLBACK_RADIUS));
 		}
-		return format(lines, start, end);
+		return format(lines, dl, lineOf(lineStart, closeOff));
+	}
+
+	/** 문자열/문자 리터럴과 주석을 건너뛰며 중괄호('{'=1,'}'=-1)와 세미콜론(';'=2) 위치를 수집. */
+	static List<int[]> scanTokens(String s) {
+		List<int[]> out = new ArrayList<>();
+		int n = s.length();
+		int i = 0;
+		while (i < n) {
+			char c = s.charAt(i);
+			if (c == '/' && i + 1 < n && s.charAt(i + 1) == '/') {
+				i += 2;
+				while (i < n && s.charAt(i) != '\n') {
+					i++;
+				}
+			} else if (c == '/' && i + 1 < n && s.charAt(i + 1) == '*') {
+				i += 2;
+				while (i + 1 < n && !(s.charAt(i) == '*' && s.charAt(i + 1) == '/')) {
+					i++;
+				}
+				i += 2;
+			} else if (c == '"' || c == '\'') {
+				char quote = c;
+				i++;
+				while (i < n) {
+					char d = s.charAt(i);
+					if (d == '\\') {
+						i += 2;
+						continue;
+					}
+					i++;
+					if (d == quote) {
+						break;
+					}
+				}
+			} else {
+				if (c == '{') {
+					out.add(new int[] { i, 1 });
+				} else if (c == '}') {
+					out.add(new int[] { i, -1 });
+				} else if (c == ';') {
+					out.add(new int[] { i, 2 });
+				}
+				i++;
+			}
+		}
+		return out;
+	}
+
+	private static int[] lineStarts(String[] lines) {
+		int[] st = new int[lines.length];
+		int off = 0;
+		for (int i = 0; i < lines.length; i++) {
+			st[i] = off;
+			off += lines[i].length() + 1; // '\n'
+		}
+		return st;
+	}
+
+	private static int lineOf(int[] lineStart, int offset) {
+		int lo = 0;
+		int hi = lineStart.length - 1;
+		int ans = 0;
+		while (lo <= hi) {
+			int mid = (lo + hi) >>> 1;
+			if (lineStart[mid] <= offset) {
+				ans = mid;
+				lo = mid + 1;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		return ans;
 	}
 
 	private static String format(String[] lines, int start, int end) {

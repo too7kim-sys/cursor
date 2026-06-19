@@ -51,7 +51,7 @@ Continue(VS Code) 의 핵심 기능 중 Eclipse에서 구현 가능한 부분을
 | `semantic_search` | **코드베이스 의미 검색(RAG)** — 키워드가 정확치 않아도 의미가 가까운 코드를 찾음(색인 필요) | - |
 | `read_file` | 파일 내용 읽기(`start_line`/`end_line` 범위 지정 가능 — 큰 .xfdl 등) | - |
 | `outline` | 파일의 **클래스/메서드 정의 목록**(`줄번호: 선언`) — 큰 파일 구조 파악 | - |
-| `read_symbol` | 파일에서 **특정 메서드/클래스 본문만** 줄번호와 함께 읽기(토큰 절약) | - |
+| `read_symbol` | 파일에서 **특정 메서드/클래스 본문만** 줄번호와 함께 읽기(토큰 절약). 문자열·주석 안의 `{ }` 를 무시하는 중괄호 매칭으로 본문 경계를 정확히 추출 | - |
 | `apply_edit` | **부분 수정** — old_text→new_text 교체(`all=true` 면 일치 전부). 정확히 안 맞아도 **줄 끝 공백·줄바꿈·들여쓰기 보정 매칭**(diff 미리보기). 보정 매칭이 여러 곳이면 거부. 실패 시 **가장 비슷한 줄 위치** 안내 | ✅ |
 | `replace_lines` | **줄번호 범위 교체** — `read_file` 로 본 `start_line`~`end_line` 구간을 통째로 교체(old_text 재현이 어려운 모델용) | ✅ |
 | `create_file` | 새 파일 생성 | ✅ |
@@ -192,7 +192,7 @@ eclipse-plugin/run-tests.sh
 powershell -File eclipse-plugin/run-tests.ps1
 ```
 
-- 테스트 본문: [`tests/TestRunner.java`](tests/TestRunner.java) (현재 174개 단언)
+- 테스트 본문: [`tests/TestRunner.java`](tests/TestRunner.java) (현재 179개 단언)
 - CI: 푸시 시 `.github/workflows/eclipse-plugin-tests.yml` 가 위 테스트를 자동 실행
 - **UI/에디터/핸들러 코드**는 Eclipse 플랫폼 API에 의존하므로 단위 테스트 대상이 아니며,
   **Eclipse PDE 빌드/실행(위 A·B)** 에서 컴파일·검증됩니다.
