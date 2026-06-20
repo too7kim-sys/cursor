@@ -34,15 +34,21 @@ public final class TextSearch {
 		String[] lines = content.split("\n", -1);
 		Pattern p = regex ? Pattern.compile(query) : null;
 		int ctx = Math.max(0, context);
-		int lastEmitted = -1;
-		int count = 0;
-		for (int i = 0; i < lines.length && count < max; i++) {
+		// 먼저 일치 줄을 표시한다(최대 max 개). 인접 매치가 서로의 컨텍스트로 흡수돼
+		// 일치 줄이 "N-"(컨텍스트)로 잘못 찍히거나 카운트가 어긋나는 것을 방지한다.
+		boolean[] isMatch = new boolean[lines.length];
+		List<Integer> matches = new ArrayList<>();
+		for (int i = 0; i < lines.length && matches.size() < max; i++) {
 			boolean hit = regex ? p.matcher(lines[i]).find() : lines[i].contains(query);
-			if (!hit) {
-				continue;
+			if (hit) {
+				isMatch[i] = true;
+				matches.add(i);
 			}
-			int from = Math.max(0, i - ctx);
-			int to = Math.min(lines.length - 1, i + ctx);
+		}
+		int lastEmitted = -1;
+		for (int idx : matches) {
+			int from = Math.max(0, idx - ctx);
+			int to = Math.min(lines.length - 1, idx + ctx);
 			if (ctx > 0 && lastEmitted >= 0 && from > lastEmitted + 1) {
 				out.add("--");
 			}
@@ -51,10 +57,9 @@ public final class TextSearch {
 				if (t.length() > MAX_LINE) {
 					t = t.substring(0, MAX_LINE) + "…";
 				}
-				out.add((j + 1) + (j == i ? ": " : "- ") + t);
+				out.add((j + 1) + (isMatch[j] ? ": " : "- ") + t);
 				lastEmitted = j;
 			}
-			count++;
 		}
 		return out;
 	}

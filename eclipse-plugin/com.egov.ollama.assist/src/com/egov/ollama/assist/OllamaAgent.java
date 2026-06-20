@@ -228,11 +228,12 @@ public class OllamaAgent {
 				String name = asString(fn.get("name"));
 				Map<String, Object> args = toArgs(fn.get("arguments"));
 
-				// 막힘(루프) 감지: 같은 도구를 같은 인자로 반복하면 한 번 넌지하고, 계속되면 중단
-				String sig = RepeatTracker.signature(name, briefArgs(args));
-				int times = repeats.record(sig);
+				// 막힘(루프) 감지: 같은 도구를 같은 인자로 "연달아" 반복하면 한 번 넌지하고, 계속되면 중단.
+				// 표시용 briefArgs 가 아니라 전체 인자(Json)로 서명해 서로 다른 호출이 충돌하지 않게 한다.
+				String sig = RepeatTracker.signature(name, Json.write(args));
+				int times = repeats.recordStreak(sig);
 				if (times >= LOOP_ABORT) {
-					log.log("\n[안내] 동일한 호출(" + name + ")이 " + times + "회 반복되어 중단합니다. 접근을 바꿔 다시 시도하세요.\n");
+					log.log("\n[안내] 동일한 호출(" + name + ")이 " + times + "회 연속 반복되어 중단합니다. 접근을 바꿔 다시 시도하세요.\n");
 					return;
 				}
 

@@ -327,6 +327,11 @@ public class TestRunner {
 		ck("ts: context after", ctx.contains("3- b"));
 		// max 제한
 		ck("ts: max limit", TextSearch.search(c, "foo", false, 0, 1).size()==1);
+		// 인접한 두 매치는 둘 다 ':'(매치)로 표시되어야 함(컨텍스트로 흡수 금지)
+		List<String> adj = TextSearch.search("a\nfoo\nfoo\nb", "foo", false, 1, 100);
+		long matchLines = adj.stream().filter(TextSearch::isMatchLine).count();
+		ck("ts: adjacent both matches", matchLines == 2);
+		ck("ts: adjacent line2", adj.contains("2: foo") && adj.contains("3: foo"));
 		// 일치 줄 판별
 		ck("ts: isMatchLine match", TextSearch.isMatchLine("12: x"));
 		ck("ts: isMatchLine context", !TextSearch.isMatchLine("12- x"));
@@ -428,6 +433,15 @@ public class TestRunner {
 		ck("rt: other independent", t.record(RepeatTracker.signature("read_file", "path=B.java")) == 1);
 		ck("rt: count query", t.count(s) == 3);
 		ck("rt: sig null safe", RepeatTracker.signature(null, null).equals("|"));
+		// 연속 스트릭: 같은 서명 연달아 → 증가, 다른 서명 끼면 초기화
+		RepeatTracker st = new RepeatTracker();
+		String a = RepeatTracker.signature("read_file", "path=A");
+		String b = RepeatTracker.signature("apply_edit", "path=A");
+		ck("rt: streak 1", st.recordStreak(a) == 1);
+		ck("rt: streak 2", st.recordStreak(a) == 2);
+		ck("rt: streak resets on diff", st.recordStreak(b) == 1);
+		ck("rt: streak restart", st.recordStreak(a) == 1); // a 다시 → 비연속이므로 1
+		ck("rt: streak grows again", st.recordStreak(a) == 2);
 	}
 
 	static void nearestHint() {
