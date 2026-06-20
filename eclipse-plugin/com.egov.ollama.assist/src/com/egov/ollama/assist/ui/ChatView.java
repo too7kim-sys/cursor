@@ -535,11 +535,17 @@ public class ChatView extends ViewPart {
 		if (d == null || d.isDisposed()) {
 			return;
 		}
-		d.asyncExec(() -> showRevertFrom(rr.index));
+		d.asyncExec(() -> showRevertFrom(rr.index, false)); // 자동 패널: 생성 파일 자동 삭제 안 함
 	}
 
-	/** index 체크포인트 시점 이후를 되돌리는 패널. UI 스레드에서 호출. */
-	private void showRevertFrom(int index) {
+	/**
+	 * index 체크포인트 시점 이후를 되돌리는 패널. UI 스레드에서 호출.
+	 *
+	 * @param allowDelete true 면 "원래 없던(생성/이동) 파일"을 되돌릴 때 삭제까지 제안한다.
+	 *                    실행 직후 자동 검토 패널에서는 false 로 두어, 방금 만든 파일이 실수로
+	 *                    삭제되지 않게 한다(삭제는 툴바 [되돌리기]에서 명시적으로 선택).
+	 */
+	private void showRevertFrom(int index, boolean allowDelete) {
 		File root = editControl.root();
 		if (root == null || index < 0 || index >= editControl.history().size()) {
 			return;
@@ -548,7 +554,7 @@ public class ChatView extends ViewPart {
 		if (restore.isEmpty()) {
 			return;
 		}
-		// 값이 null 인 항목은 "원래 없던 파일"(생성/이동 대상) → 되돌리면 복원이 아니라 삭제한다.
+		// 값이 null 인 항목은 "원래 없던 파일"(생성/이동 대상) → 되돌리면 복원이 아니라 삭제 대상.
 		java.util.List<ChangeParser.Change> reverts = new java.util.ArrayList<>();
 		java.util.List<String> deletes = new java.util.ArrayList<>();
 		for (java.util.Map.Entry<String, String> e : restore.entrySet()) {
@@ -571,7 +577,7 @@ public class ChatView extends ViewPart {
 				}
 			}
 		}
-		if (!deletes.isEmpty()) {
+		if (allowDelete && !deletes.isEmpty()) {
 			boolean okDel = MessageDialog.openConfirm(output.getShell(), "되돌리기 — 새 파일 삭제",
 					"되돌리기로 새로 생성된 다음 파일을 삭제합니다:\n\n" + String.join("\n", deletes));
 			if (okDel) {
@@ -623,7 +629,7 @@ public class ChatView extends ViewPart {
 		sel.setMessage("선택한 체크포인트 시점 이후의 변경을 되돌립니다(그 시점부터 최신까지):");
 		sel.setElements(indices);
 		if (sel.open() == org.eclipse.jface.window.Window.OK && sel.getFirstResult() instanceof Integer) {
-			showRevertFrom((Integer) sel.getFirstResult());
+			showRevertFrom((Integer) sel.getFirstResult(), true); // 툴바: 생성 파일 삭제까지 명시적 선택
 		}
 	}
 
