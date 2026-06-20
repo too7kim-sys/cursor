@@ -100,13 +100,16 @@ public final class EditHistory {
 
 	/**
 	 * index..끝 체크포인트들을 되돌릴 때 각 파일을 복원할 내용(경로→변경 전). 같은 파일이 여러 번
-	 * 바뀐 경우 가장 이른(=가장 오래된) 변경 전 내용을 사용한다.
+	 * 바뀐 경우 가장 이른(=가장 오래된) 변경 전 내용을 사용한다. 가장 이른 변경이 "새로 생성"이면
+	 * 되돌릴 때 삭제해야 하므로 값으로 {@code null} 을 넣는다(= 파일 삭제 신호).
 	 */
 	public Map<String, String> restoreStateFrom(int index) {
 		Map<String, String> m = new LinkedHashMap<>();
 		for (int i = Math.max(0, index); i < cps.size(); i++) {
 			for (FileChange e : cps.get(i).edits) {
-				m.putIfAbsent(e.path, e.before);
+				if (!m.containsKey(e.path)) {
+					m.put(e.path, e.existedBefore ? e.before : null);
+				}
 			}
 		}
 		return m;
@@ -135,6 +138,7 @@ public final class EditHistory {
 				t.add(e.path);
 				t.add(e.before);
 				t.add(e.after);
+				t.add(e.existedBefore); // 4번째: 새로 생성 여부(되돌리기 삭제 판단). 구버전(3요소)은 true 로 로드
 				es.add(t);
 			}
 			m.put("edits", es);
@@ -165,7 +169,8 @@ public final class EditHistory {
 					if (eo instanceof List) {
 						List<?> t = (List<?>) eo;
 						if (t.size() >= 3) {
-							edits.add(new FileChange(str(t.get(0)), str(t.get(1)), str(t.get(2))));
+							boolean existed = t.size() >= 4 ? asBool(t.get(3)) : true; // 구버전(3요소) 호환
+							edits.add(new FileChange(str(t.get(0)), str(t.get(1)), str(t.get(2)), existed));
 						}
 					}
 				}
@@ -179,6 +184,13 @@ public final class EditHistory {
 
 	private static String str(Object o) {
 		return o == null ? "" : o.toString();
+	}
+
+	private static boolean asBool(Object o) {
+		if (o instanceof Boolean) {
+			return (Boolean) o;
+		}
+		return o != null && "true".equalsIgnoreCase(o.toString().trim());
 	}
 
 	private static long asLong(Object o) {

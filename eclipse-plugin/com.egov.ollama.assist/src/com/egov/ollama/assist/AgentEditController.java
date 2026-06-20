@@ -45,21 +45,22 @@ public final class AgentEditController {
 		return root;
 	}
 
-	/** 경로별로 합침: 최초 before 유지, 최종 after 갱신, 첫 등장 순서 보존. */
+	/** 경로별로 합침: 최초 before 와 최초 existedBefore 유지, 최종 after 갱신, 첫 등장 순서 보존. */
 	public static List<FileChange> merge(List<FileChange> raw) {
-		LinkedHashMap<String, String[]> m = new LinkedHashMap<>();
+		LinkedHashMap<String, Object[]> m = new LinkedHashMap<>(); // [before, after, existedBefore]
 		if (raw != null) {
 			for (FileChange c : raw) {
 				if (m.containsKey(c.path)) {
-					m.get(c.path)[1] = c.after;
+					m.get(c.path)[1] = c.after; // 최종 after 만 갱신(before/existed 는 최초 유지)
 				} else {
-					m.put(c.path, new String[] { c.before, c.after });
+					m.put(c.path, new Object[] { c.before, c.after, c.existedBefore });
 				}
 			}
 		}
 		List<FileChange> out = new ArrayList<>();
-		for (Map.Entry<String, String[]> e : m.entrySet()) {
-			out.add(new FileChange(e.getKey(), e.getValue()[0], e.getValue()[1]));
+		for (Map.Entry<String, Object[]> e : m.entrySet()) {
+			Object[] v = e.getValue();
+			out.add(new FileChange(e.getKey(), (String) v[0], (String) v[1], (Boolean) v[2]));
 		}
 		return out;
 	}
@@ -145,6 +146,27 @@ public final class AgentEditController {
 			}
 			Files.write(f.toPath(), content == null ? new byte[0] : content.getBytes(StandardCharsets.UTF_8));
 			return true;
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	/** root 내부의 파일을 삭제(경로 이탈 차단). 이미 없으면 성공으로 간주. 되돌리기에서 "생성 취소"용. */
+	public static boolean deleteFile(File root, String rel) {
+		if (root == null) {
+			return false;
+		}
+		try {
+			File f = new File(root, rel);
+			String rootPath = root.getCanonicalPath();
+			String fp = f.getCanonicalPath();
+			if (!fp.equals(rootPath) && !fp.startsWith(rootPath + File.separator)) {
+				return false;
+			}
+			if (!f.exists()) {
+				return true;
+			}
+			return f.delete();
 		} catch (Exception e) {
 			return false;
 		}

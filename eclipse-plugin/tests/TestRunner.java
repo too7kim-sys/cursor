@@ -235,6 +235,18 @@ public class TestRunner {
 		ck("eh: json label", h3.get(0).label.equals("작업1"));
 		ck("eh: json restore", "x0".equals(h3.restoreStateFrom(0).get("X.java")) && h3.get(0).fileCount()==2);
 		ck("eh: load empty", roundtripEmpty());
+		// 생성된 파일(되돌리면 삭제): restoreStateFrom 값이 null, JSON 라운드트립 보존
+		EditHistory hcrt = new EditHistory();
+		List<FileChange> cr = new ArrayList<>(); cr.add(FileChange.created("New.java","content"));
+		hcrt.push("create", cr);
+		java.util.Map<String,String> rs = hcrt.restoreStateFrom(0);
+		ck("eh: created -> delete null", rs.containsKey("New.java") && rs.get("New.java")==null);
+		EditHistory hcrt2 = new EditHistory(); hcrt2.loadJson(hcrt.toJson());
+		ck("eh: created flag persisted", hcrt2.restoreStateFrom(0).containsKey("New.java") && hcrt2.restoreStateFrom(0).get("New.java")==null);
+		// 구버전(3요소) JSON 은 existedBefore=true 로 로드(복원값 non-null)
+		EditHistory legacy = new EditHistory();
+		legacy.loadJson("[{\"label\":\"x\",\"time\":1,\"edits\":[[\"A.java\",\"b0\",\"a1\"]]}]");
+		ck("eh: legacy 3-elem existed", "b0".equals(legacy.restoreStateFrom(0).get("A.java")));
 		// 개수 상한: 2개로 제한하고 3번 push → 최신 2개만, 가장 오래된 것 제거
 		EditHistory hc = new EditHistory();
 		hc.setMaxCheckpoints(2);
@@ -279,6 +291,13 @@ public class TestRunner {
 		ck("aec: merge size", m.size()==2);
 		FileChange a = m.get(0);
 		ck("aec: merge first-before/last-after", a.path.equals("A.java") && a.before.equals("a0") && a.after.equals("a2"));
+		// merge 가 "생성" 플래그를 보존해야 함(생성 후 편집 → 되돌리면 삭제 대상)
+		List<FileChange> rawc = new ArrayList<>();
+		rawc.add(FileChange.created("F.java","v1"));
+		rawc.add(new FileChange("F.java","v1","v2"));
+		List<FileChange> mg = AgentEditController.merge(rawc);
+		ck("aec: merge keeps created flag", mg.size()==1 && !mg.get(0).existedBefore && mg.get(0).after.equals("v2"));
+		ck("aec: merge default existed", AgentEditController.merge(java.util.Arrays.asList(new FileChange("G.java","g0","g1"))).get(0).existedBefore);
 		File dir = File.createTempFile("aec","d"); dir.delete(); dir.mkdirs();
 		File proj = File.createTempFile("proj","d"); proj.delete(); proj.mkdirs();
 		AgentEditController c = new AgentEditController(dir);
@@ -357,6 +376,16 @@ public class TestRunner {
 		// 사용자/시스템 메시지는 손대지 않음
 		ck("cm: user intact", "do it".equals(((Map<?,?>)msgs.get(1)).get("content")));
 		ck("cm: null safe", ContextManager.compactToolOutputs(null, 2, 600)==0);
+		// 1회성 구조 힌트 압축: 접두어로 식별, 다른 system 메시지는 보존
+		List<Object> hm = new ArrayList<>();
+		String hint = "프로젝트 구조(일부). " + rep("Z", 1000);
+		String other = "다른 시스템 메시지 " + rep("Q", 1000);
+		hm.add(mkMsg("system", hint));
+		hm.add(mkMsg("system", other));
+		int sv = ContextManager.compactStaleHints(hm, "프로젝트 구조(일부)", 200);
+		ck("cm: hint trimmed", sv > 0 && ((String)((Map<?,?>)hm.get(0)).get("content")).length() < 400);
+		ck("cm: other hint intact", other.equals(((Map<?,?>)hm.get(1)).get("content")));
+		ck("cm: hint null safe", ContextManager.compactStaleHints(null, "x", 10)==0);
 	}
 
 	static void planRenderer() {

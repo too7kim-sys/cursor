@@ -548,19 +548,38 @@ public class ChatView extends ViewPart {
 		if (restore.isEmpty()) {
 			return;
 		}
+		// 값이 null 인 항목은 "원래 없던 파일"(생성/이동 대상) → 되돌리면 복원이 아니라 삭제한다.
 		java.util.List<ChangeParser.Change> reverts = new java.util.ArrayList<>();
+		java.util.List<String> deletes = new java.util.ArrayList<>();
 		for (java.util.Map.Entry<String, String> e : restore.entrySet()) {
-			reverts.add(new ChangeParser.Change(e.getKey(), e.getValue())); // content=복원할 내용
-		}
-		ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), reverts, root,
-				"되돌리기 — 체크포인트 #" + (index + 1) + " 이후 복구(" + reverts.size() + "파일)", true);
-		if (dlg.open() != org.eclipse.jface.window.Window.OK) {
-			return;
+			if (e.getValue() == null) {
+				deletes.add(e.getKey());
+			} else {
+				reverts.add(new ChangeParser.Change(e.getKey(), e.getValue())); // content=복원할 내용
+			}
 		}
 		int n = 0;
-		for (ChangeParser.Change ch : dlg.getAccepted()) {
-			if (AgentEditController.writeFile(root, ch.path, ch.content)) {
-				n++;
+		if (!reverts.isEmpty()) {
+			ChangeReviewDialog dlg = new ChangeReviewDialog(output.getShell(), reverts, root,
+					"되돌리기 — 체크포인트 #" + (index + 1) + " 이후 복구(" + reverts.size() + "파일)", true);
+			if (dlg.open() != org.eclipse.jface.window.Window.OK) {
+				return;
+			}
+			for (ChangeParser.Change ch : dlg.getAccepted()) {
+				if (AgentEditController.writeFile(root, ch.path, ch.content)) {
+					n++;
+				}
+			}
+		}
+		if (!deletes.isEmpty()) {
+			boolean okDel = MessageDialog.openConfirm(output.getShell(), "되돌리기 — 새 파일 삭제",
+					"되돌리기로 새로 생성된 다음 파일을 삭제합니다:\n\n" + String.join("\n", deletes));
+			if (okDel) {
+				for (String p : deletes) {
+					if (AgentEditController.deleteFile(root, p)) {
+						n++;
+					}
+				}
 			}
 		}
 		if (n > 0) {

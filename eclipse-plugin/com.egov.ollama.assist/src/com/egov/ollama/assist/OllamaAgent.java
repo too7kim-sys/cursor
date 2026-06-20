@@ -91,6 +91,8 @@ public class OllamaAgent {
 	private static final int LOOP_ABORT = 5;
 	/** 시작 시 주입할 프로젝트 구조 최대 항목 수. */
 	private static final int STRUCT_MAX = 120;
+	/** 구조 힌트 system 메시지의 접두어(컨텍스트 압축 시 식별용). */
+	private static final String STRUCT_HINT = "프로젝트 구조(일부)";
 
 	private final String base;
 	private final String model;
@@ -142,7 +144,7 @@ public class OllamaAgent {
 		String structure = projectStructure();
 		if (structure != null && !structure.isEmpty()) {
 			messages.add(msg("system",
-					"프로젝트 구조(일부). list_files 호출을 줄이기 위한 참고용이며, 자세한 내용은 도구로 확인하세요:\n" + structure));
+					STRUCT_HINT + ". list_files 호출을 줄이기 위한 참고용이며, 자세한 내용은 도구로 확인하세요:\n" + structure));
 		}
 		messages.add(msg("user", userPrompt));
 		int verifyRounds = 0;
@@ -152,11 +154,15 @@ public class OllamaAgent {
 				log.log("\n[중지됨]\n");
 				return;
 			}
-			// 컨텍스트 한계 방지: 대화가 커지면 오래된 도구 결과를 압축
+			// 컨텍스트 한계 방지: 대화가 커지면 오래된 도구 결과를 압축하고,
+			// 그래도 예산을 넘으면 1회성 구조 힌트(고정 오버헤드)까지 줄인다.
 			if (ContextManager.estimateChars(messages) > CONTEXT_BUDGET) {
 				int saved = ContextManager.compactToolOutputs(messages, KEEP_RECENT_TOOL, COMPACT_TOOL_CHARS);
+				if (ContextManager.estimateChars(messages) > CONTEXT_BUDGET) {
+					saved += ContextManager.compactStaleHints(messages, STRUCT_HINT, 400);
+				}
 				if (saved > 0) {
-					log.progress("\n🗜 컨텍스트 정리(오래된 도구 결과 " + saved + "자 축약)\n");
+					log.progress("\n🗜 컨텍스트 정리(" + saved + "자 축약)\n");
 				}
 			}
 			String body = "{\"model\":" + JsonUtil.quote(model)
@@ -839,8 +845,8 @@ public class OllamaAgent {
 		}
 		Files.move(from.toPath(), to.toPath());
 		edited = true;
-		appliedChanges.add(new FileChange(fromRel, content, "")); // 원본 복원용
-		appliedChanges.add(new FileChange(toRel, "", content)); // 대상 생성 기록
+		appliedChanges.add(new FileChange(fromRel, content, "")); // 원본 복원용(되돌리면 내용 복원)
+		appliedChanges.add(FileChange.created(toRel, content)); // 대상 생성(되돌리면 삭제)
 		return "이동 완료: " + fromRel + " → " + toRel;
 	}
 
@@ -870,7 +876,7 @@ public class OllamaAgent {
 		}
 		write(f, content);
 		edited = true;
-		appliedChanges.add(new FileChange(rel, "", content));
+		appliedChanges.add(FileChange.created(rel, content)); // 되돌리면 삭제
 		return "파일 생성 완료: " + rel + " (" + content.length() + " chars)";
 	}
 

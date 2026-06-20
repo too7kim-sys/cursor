@@ -71,4 +71,35 @@ public final class ContextManager {
 		}
 		return saved;
 	}
+
+	/**
+	 * 1회성 힌트(예: 시작 시 주입한 프로젝트 구조)처럼 매 턴 비용만 차지하는 system 메시지를 줄인다.
+	 * {@code prefix} 로 시작하는 system 메시지 본문을 {@code maxChars} 로 자른다. 도구 결과 압축만으로
+	 * 예산을 못 맞출 때(고정 오버헤드가 큰 경우) 보조로 사용. 반환: 절약한 문자 수.
+	 */
+	@SuppressWarnings("unchecked")
+	public static int compactStaleHints(List<?> messages, String prefix, int maxChars) {
+		if (messages == null || prefix == null || maxChars < 0) {
+			return 0;
+		}
+		int saved = 0;
+		for (Object o : messages) {
+			if (!(o instanceof Map)) {
+				continue;
+			}
+			Map<String, Object> m = (Map<String, Object>) o;
+			if (!"system".equals(String.valueOf(m.get("role")))) {
+				continue;
+			}
+			Object c = m.get("content");
+			if (c instanceof String) {
+				String s = (String) c;
+				if (s.startsWith(prefix) && s.length() > maxChars + ELLIPSIS.length()) {
+					m.put("content", s.substring(0, maxChars) + ELLIPSIS);
+					saved += s.length() - maxChars - ELLIPSIS.length();
+				}
+			}
+		}
+		return saved;
+	}
 }
